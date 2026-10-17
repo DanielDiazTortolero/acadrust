@@ -1118,8 +1118,29 @@ impl DataTableCellType {
     pub(crate) fn has_native_codec(self) -> bool {
         matches!(
             self,
-            Self::Integer | Self::Double | Self::Text | Self::Point | Self::ObjectId
+            Self::Integer
+                | Self::Double
+                | Self::Text
+                | Self::Point
+                | Self::ObjectId
+                | Self::HardOwnerId
+                | Self::SoftOwnerId
+                | Self::HardPointerId
+                | Self::SoftPointerId
         )
+    }
+
+    /// DXF group code of an object-ID cell: 331 for a plain object ID, then the standard reference
+    /// codes 360 hard owner, 350 soft owner, 340 hard pointer, 330 soft pointer (AutoCAD writes 360 for type 6).
+    pub(crate) fn dxf_handle_code(self) -> Option<i32> {
+        match self {
+            Self::ObjectId => Some(331),
+            Self::HardOwnerId => Some(360),
+            Self::SoftOwnerId => Some(350),
+            Self::HardPointerId => Some(340),
+            Self::SoftPointerId => Some(330),
+            _ => None,
+        }
     }
 }
 

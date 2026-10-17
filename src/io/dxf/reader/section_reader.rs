@@ -6059,8 +6059,9 @@ impl<'a> SectionReader<'a> {
                             DataTableCellType::Double => value.real = fields.f64(section, 40),
                             DataTableCellType::Text => value.text = fields.string(section, 3),
                             DataTableCellType::Point => value.point = fields.point3(section, 10),
-                            DataTableCellType::ObjectId => {
-                                value.handle = fields.handle(section, 331)
+                            id_type if id_type.is_object_id() => {
+                                let code = id_type.dxf_handle_code().expect("object-ID cell type");
+                                value.handle = fields.handle(section, code)
                             }
                             _ => unreachable!("cell type checked above"),
                         }

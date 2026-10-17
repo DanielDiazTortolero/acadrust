@@ -6865,7 +6865,10 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
                                 self.writer.write_double(20, row.point.y)?;
                                 self.writer.write_double(30, row.point.z)?;
                             }
-                            DataTableCellType::ObjectId => self.writer.write_handle(331, row.handle)?,
+                            id_type if id_type.is_object_id() => self.writer.write_handle(
+                                id_type.dxf_handle_code().expect("object-ID cell type"),
+                                row.handle,
+                            )?,
                             _ => unreachable!("DATATABLE validated above"),
                         }
                     }

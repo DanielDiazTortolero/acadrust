@@ -198,8 +198,54 @@ fn object_id_cells_follow_handle_collision_repairs() {
 }
 
 #[test]
+fn owner_and_pointer_cells_roundtrip_in_dwg_and_both_dxf_encodings() {
+    // AutoCAD writes hard-owner cells (type 6) with DXF group 360, e.g. the dynamic-block data table in
+    // a 2004 drawing; the other reference kinds use the standard codes 350/340/330.
+    let mut document = CadDocument::new();
+    let target = document.text_styles.handle();
+    let mut object = ClassObject::new(ClassObjectData::DataTable(DataTable {
+        flags: 2,
+        row_count: 2,
+        columns: (5..=9)
+            .map(|value_type| DataTableColumn {
+                value_type,
+                name: format!("Reference {value_type}"),
+                rows: vec![
+                    DataTableValue { handle: target, ..Default::default() },
+                    DataTableValue { handle: document.layers.handle(), ..Default::default() },
+                ],
+            })
+            .collect(),
+        ..Default::default()
+    }));
+    object.handle = document.allocate_handle();
+    document
+        .objects
+        .insert(object.handle, ObjectType::ClassObject(object));
+    let expected = table(&document).clone();
+
+    let dwg = DwgReader::from_stream(Cursor::new(DwgWriter::write_to_vec(&document).unwrap()))
+        .read()
+        .unwrap();
+    assert_eq!(table(&dwg), &expected);
+
+    let ascii = DxfWriter::new(&document).write_to_vec().unwrap();
+    let text = String::from_utf8_lossy(&ascii);
+    for code in ["331", "360", "350", "340", "330"] {
+        assert!(
+            text.lines().any(|line| line.trim() == code),
+            "DXF output lacks group {code}"
+        );
+    }
+    for bytes in [ascii.clone(), DxfWriter::new_binary(&document).write_to_vec().unwrap()] {
+        let dxf = DxfReader::from_reader(Cursor::new(bytes)).unwrap().read().unwrap();
+        assert_eq!(table(&dxf), &expected);
+    }
+}
+
+#[test]
 fn writers_reject_unsupported_cells_and_inconsistent_row_counts() {
-    for (value_type, row_count) in [(6, 1), (99, 1), (1, 2), (1, -1)] {
+    for (value_type, row_count) in [(10, 1), (99, 1), (1, 2), (1, -1)] {
         let mut document = CadDocument::new();
         let mut object = ClassObject::new(ClassObjectData::DataTable(DataTable {
             row_count,
@@ -221,7 +267,7 @@ fn writers_reject_unsupported_cells_and_inconsistent_row_counts() {
 
 #[test]
 fn unsupported_dwg_cell_types_preserve_the_complete_record() {
-    for cell_type in [6, 99] {
+    for cell_type in [10, 99] {
         let mut document = native_document(true);
         let handle = table_handle(&document);
         let mut record = table_record(include_bytes!("datatable/point_object_id.dwg"), handle);

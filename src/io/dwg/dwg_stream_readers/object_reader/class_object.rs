@@ -898,7 +898,9 @@ pub fn read_class_object_data(
                         DataTableCellType::Double => value.real = reader.read_bit_double(),
                         DataTableCellType::Text => value.text = reader.read_variable_text(),
                         DataTableCellType::Point => value.point = reader.read_3bit_double(),
-                        DataTableCellType::ObjectId => {
+                        // Every object-ID cell type stores a handle reference; the reference type in
+                        // the stream carries the owner/pointer semantics.
+                        id_type if id_type.is_object_id() => {
                             value.handle = Handle::from(reader.read_handle());
                         }
                         _ => return None,

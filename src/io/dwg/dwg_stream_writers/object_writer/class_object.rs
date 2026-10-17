@@ -744,9 +744,18 @@ impl<'a> DwgObjectWriter<'a> {
                             DataTableCellType::Double => self.writer.write_bit_double(row.real),
                             DataTableCellType::Text => self.writer.write_variable_text(&row.text),
                             DataTableCellType::Point => self.writer.write_3bit_double(row.point),
-                            DataTableCellType::ObjectId => self
+                            DataTableCellType::ObjectId | DataTableCellType::SoftPointerId => self
                                 .writer
                                 .write_handle(DwgReferenceType::SoftPointer, row.handle.value()),
+                            DataTableCellType::HardOwnerId => self
+                                .writer
+                                .write_handle(DwgReferenceType::HardOwnership, row.handle.value()),
+                            DataTableCellType::SoftOwnerId => self
+                                .writer
+                                .write_handle(DwgReferenceType::SoftOwnership, row.handle.value()),
+                            DataTableCellType::HardPointerId => self
+                                .writer
+                                .write_handle(DwgReferenceType::HardPointer, row.handle.value()),
                             _ => unreachable!("DATATABLE validated by object writer"),
                         }
                     }
