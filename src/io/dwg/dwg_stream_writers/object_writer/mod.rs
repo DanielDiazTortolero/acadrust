@@ -2292,10 +2292,13 @@ impl<'a> DwgObjectWriter<'a> {
             None
         };
 
-        let (handle, name, use_raw_name) = if let Some(ref b) = block {
-            (b.common.handle, b.name.as_str(), true)
+        // Without a marker entity (documents read from DXF or built in code) the marker takes the record's own
+        // name, numeric suffix included: AutoCAD's markers carry *Paper_Space0, *Paper_Space1, ... while the
+        // BLOCK_HEADER stores the bare *Paper_Space, and the marker is what tells those records apart.
+        let (handle, name) = if let Some(ref b) = block {
+            (b.common.handle, b.name.as_str())
         } else {
-            (record.block_entity_handle, record.name.as_str(), false)
+            (record.block_entity_handle, record.name.as_str())
         };
 
         let mut common = block
@@ -2339,13 +2342,7 @@ impl<'a> DwgObjectWriter<'a> {
             &common.edge_visual_style_handle,
         );
 
-        // Use the original name as-is when we have the Block entity from binary;
-        // only apply dwg_block_name() for programmatically-created blocks.
-        if use_raw_name {
-            self.writer.write_variable_text(name);
-        } else {
-            self.writer.write_variable_text(dwg_block_name(name));
-        }
+        self.writer.write_variable_text(name);
 
         self.register_object(common.handle);
     }
