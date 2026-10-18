@@ -389,7 +389,16 @@ impl<'a> DwgObjectWriter<'a> {
         }
 
         // ── MAIN: entity mode (2 bits) ──
-        let entmode = entity_mode_override.unwrap_or_else(|| self.get_entity_mode(&owner_handle));
+        // A stored mode (from a DWG record, or the DXF paper-space flag 67) is kept only while it agrees with the
+        // owner being written: mode 1 means the active layout's *Paper_Space and 2 *Model_Space, and neither writes
+        // an owner handle. A sub-entity (ATTRIB, VERTEX, SEQEND) or an entity of another layout (*Paper_SpaceN)
+        // needs mode 0 and its owner; a stored 1 there detached it, and the reader dropped attributes so written.
+        let computed = self.get_entity_mode(&owner_handle);
+        let entmode = match entity_mode_override {
+            Some(0) => 0,
+            Some(mode) if mode == computed => mode,
+            _ => computed,
+        };
         self.writer.write_2bits(entmode);
 
         // ── HANDLE: owner (if entmode == 0) ──
