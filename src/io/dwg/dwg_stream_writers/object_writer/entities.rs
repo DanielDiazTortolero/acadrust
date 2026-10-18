@@ -3682,6 +3682,8 @@ impl<'a> DwgObjectWriter<'a> {
                 }
             }
         }
+        // Override block: each value behind its own bit; colours in the R2004 CMC encoding for every file
+        // version (AutoCAD writes table records that way even in R2000 files, as for TABLESTYLE).
         self.writer.write_bit(cell.style.is_some());
         if let Some(style) = &cell.style {
             let flags = style.override_flags;
@@ -3694,10 +3696,10 @@ impl<'a> DwgObjectWriter<'a> {
                 self.writer.write_bit(!style.fill_enabled);
             }
             if flags & 0x04 != 0 {
-                self.writer.write_cm_color(&style.background_color);
+                self.writer.write_cm_true_color(&style.background_color);
             }
             if flags & 0x08 != 0 {
-                self.writer.write_cm_color(&style.content_color);
+                self.writer.write_cm_true_color(&style.content_color);
             }
             if flags & 0x10 != 0 {
                 self.writer.write_handle(
@@ -3708,17 +3710,20 @@ impl<'a> DwgObjectWriter<'a> {
             if flags & 0x20 != 0 {
                 self.writer.write_bit_double(style.text_height);
             }
-            for (color_bit, lw_bit, border) in [
-                (0x40, 0x400, &style.top_border),
-                (0x80, 0x800, &style.right_border),
-                (0x100, 0x1000, &style.bottom_border),
-                (0x200, 0x2000, &style.left_border),
+            // Per edge: colour, line weight and visibility, each behind its own bit (ODA order).
+            for (color_bit, lw_bit, visibility_bit, border) in [
+                (0x40, 0x400, 0x4000, &style.top_border),
+                (0x80, 0x800, 0x8000, &style.right_border),
+                (0x100, 0x1000, 0x10000, &style.bottom_border),
+                (0x200, 0x2000, 0x20000, &style.left_border),
             ] {
                 if flags & color_bit != 0 {
-                    self.writer.write_cm_color(&border.color);
+                    self.writer.write_cm_true_color(&border.color);
                 }
                 if flags & lw_bit != 0 {
                     self.writer.write_bit_short(border.line_weight.as_i16());
+                }
+                if flags & visibility_bit != 0 {
                     self.writer.write_bit_short((!border.invisible) as i16);
                 }
             }
@@ -3768,7 +3773,7 @@ impl<'a> DwgObjectWriter<'a> {
                     .get(index)
                     .cloned()
                     .unwrap_or(Color::ByBlock);
-                self.writer.write_cm_color(&color);
+                self.writer.write_cm_true_color(&color);
                 index += 1;
             }
         }
@@ -3788,7 +3793,7 @@ impl<'a> DwgObjectWriter<'a> {
                     .get(index)
                     .cloned()
                     .unwrap_or(Color::ByBlock);
-                self.writer.write_cm_color(&color);
+                self.writer.write_cm_true_color(&color);
                 index += 1;
             }
         }
@@ -3838,7 +3843,7 @@ impl<'a> DwgObjectWriter<'a> {
         for bit in 0..18 {
             if value.flags & (1 << bit) != 0 {
                 let color = value.values.get(index).cloned().unwrap_or(Color::ByBlock);
-                self.writer.write_cm_color(&color);
+                self.writer.write_cm_true_color(&color);
                 index += 1;
             }
         }

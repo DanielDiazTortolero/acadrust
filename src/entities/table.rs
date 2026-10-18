@@ -1082,20 +1082,23 @@ impl TableCell {
                 if p.contains(P::BACKGROUND_COLOR) && !style.fill_enabled {
                     style.background_color = Color::ByBlock;
                 }
-                for (color_bit, weight_bit, edge, border) in [
-                    (0x40, 0x400, CellEdgeFlags::TOP, &mut style.top_border),
-                    (0x80, 0x800, CellEdgeFlags::RIGHT, &mut style.right_border),
-                    (0x100, 0x1000, CellEdgeFlags::BOTTOM, &mut style.bottom_border),
-                    (0x200, 0x2000, CellEdgeFlags::LEFT, &mut style.left_border),
+                // Legacy bits per edge: colour, line weight and visibility (ODA: 0x4000.. for visibility).
+                for (color_bit, weight_bit, visibility_bit, edge, border) in [
+                    (0x40, 0x400, 0x4000, CellEdgeFlags::TOP, &mut style.top_border),
+                    (0x80, 0x800, 0x8000, CellEdgeFlags::RIGHT, &mut style.right_border),
+                    (0x100, 0x1000, 0x10000, CellEdgeFlags::BOTTOM, &mut style.bottom_border),
+                    (0x200, 0x2000, 0x20000, CellEdgeFlags::LEFT, &mut style.left_border),
                 ] {
                     if own.override_flags & color_bit != 0 {
                         border.override_flags |= BorderPropertyFlags::COLOR;
                     }
                     if own.override_flags & weight_bit != 0 {
-                        border.override_flags |=
-                            BorderPropertyFlags::LINE_WEIGHT | BorderPropertyFlags::INVISIBILITY;
+                        border.override_flags |= BorderPropertyFlags::LINE_WEIGHT;
                     }
-                    if own.override_flags & (color_bit | weight_bit) != 0 {
+                    if own.override_flags & visibility_bit != 0 {
+                        border.override_flags |= BorderPropertyFlags::INVISIBILITY;
+                    }
+                    if own.override_flags & (color_bit | weight_bit | visibility_bit) != 0 {
                         style.applied_border_edges |= edge;
                     }
                 }
@@ -2419,10 +2422,16 @@ pub fn cell_override_bit(code: i32) -> Option<i32> {
         65 => 0x80,
         66 => 0x100,
         68 => 0x200,
-        279 | 289 => 0x400,
-        275 | 285 => 0x800,
-        276 | 286 => 0x1000,
-        278 | 288 => 0x2000,
+        279 => 0x400,
+        275 => 0x800,
+        276 => 0x1000,
+        278 => 0x2000,
+        // Visibility has bits of its own (ODA: top 0x4000, right 0x8000, bottom 0x10000, left 0x20000);
+        // a cell can override a border's line weight without its visibility.
+        289 => 0x4000,
+        285 => 0x8000,
+        286 => 0x10000,
+        288 => 0x20000,
         _ => return None,
     })
 }

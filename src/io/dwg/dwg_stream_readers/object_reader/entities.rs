@@ -3802,9 +3802,9 @@ fn read_table_cell_data(
         _ => {}
     }
 
-    // Per-cell style override block (each conditional gated on the override
-    // flags; the grid line-weight bit gates both the weight and the visibility
-    // read, mirroring the source exactly to stay byte-aligned).
+    // Per-cell style override block, each value behind its own override bit. Colours keep the R2004 CMC
+    // encoding in every file version: the table class is newer than R2000, so AutoCAD writes its records
+    // the R2004 way even in an R2000 file (as it does for TABLESTYLE).
     if reader.read_bit() {
         let flags = reader.read_bit_long();
         let mut style = CellStyle::new();
@@ -3820,10 +3820,10 @@ fn read_table_cell_data(
             style.fill_enabled = !reader.read_bit();
         }
         if flags & 0x04 != 0 {
-            style.background_color = reader.read_cm_color();
+            style.background_color = reader.read_cm_true_color();
         }
         if flags & 0x08 != 0 {
-            style.content_color = reader.read_cm_color();
+            style.content_color = reader.read_cm_true_color();
         }
         if flags & 0x10 != 0 {
             let handle = reader.read_handle();
@@ -3832,20 +3832,21 @@ fn read_table_cell_data(
         if flags & 0x20 != 0 {
             style.text_height = reader.read_bit_double();
         }
-        // Per edge: colour, line weight, visibility.
-        for (color_bit, lw_bit, border) in [
-            (0x40, 0x400, &mut style.top_border),
-            (0x80, 0x800, &mut style.right_border),
-            (0x100, 0x1000, &mut style.bottom_border),
-            (0x200, 0x2000, &mut style.left_border),
+        // Per edge: colour, line weight, visibility, each behind its own bit (ODA: visibility is
+        // 0x4000/0x8000/0x10000/0x20000, not the line-weight bit).
+        for (color_bit, lw_bit, visibility_bit, border) in [
+            (0x40, 0x400, 0x4000, &mut style.top_border),
+            (0x80, 0x800, 0x8000, &mut style.right_border),
+            (0x100, 0x1000, 0x10000, &mut style.bottom_border),
+            (0x200, 0x2000, 0x20000, &mut style.left_border),
         ] {
             if flags & color_bit != 0 {
-                border.color = reader.read_cm_color();
+                border.color = reader.read_cm_true_color();
             }
             if flags & lw_bit != 0 {
                 border.line_weight = crate::types::LineWeight::from_value(reader.read_bit_short());
             }
-            if flags & lw_bit != 0 {
+            if flags & visibility_bit != 0 {
                 border.invisible = reader.read_bit_short() == 0;
             }
         }
@@ -3887,7 +3888,7 @@ fn read_legacy_table_style_override(reader: &mut DwgMergedReader) -> LegacyTable
     }
     for bit in [0x0020, 0x0040, 0x0080] {
         if flags & bit != 0 {
-            value.row_colors.push(reader.read_cm_color());
+            value.row_colors.push(reader.read_cm_true_color());
         }
     }
     for bit in [0x0100, 0x0200, 0x0400] {
@@ -3897,7 +3898,7 @@ fn read_legacy_table_style_override(reader: &mut DwgMergedReader) -> LegacyTable
     }
     for bit in [0x0800, 0x1000, 0x2000] {
         if flags & bit != 0 {
-            value.row_fill_colors.push(reader.read_cm_color());
+            value.row_fill_colors.push(reader.read_cm_true_color());
         }
     }
     for bit in [0x4000, 0x8000, 0x10000] {
@@ -3925,7 +3926,7 @@ fn read_legacy_border_colors(reader: &mut DwgMergedReader) -> LegacyBorderOverri
     let mut values = Vec::new();
     for bit in 0..18 {
         if flags & (1 << bit) != 0 {
-            values.push(reader.read_cm_color());
+            values.push(reader.read_cm_true_color());
         }
     }
     LegacyBorderOverrides { flags, values }

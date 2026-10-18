@@ -20083,11 +20083,10 @@ impl<'a> SectionReader<'a> {
                         c.merge_height = v as i32;
                     }
                 }
-                177 => {
-                    if let (Some(c), Some(v)) = (cur.as_mut(), pair.as_i16()) {
-                        c.flag = v as i32;
-                    }
-                }
+                // The cell's override flags truncated to 16 bits (pre-R2007 DXF). The flags kept are the ones
+                // whose values the cell's own codes carry (see cell_override_bit above), so a bit without its
+                // value is never written back; `flag` is the R2007+ record's own field, not this one.
+                177 => {}
                 178 => {
                     if let (Some(c), Some(value)) = (cur.as_mut(), pair.as_i16()) {
                         c.virtual_edge = value;
@@ -20172,9 +20171,15 @@ impl<'a> SectionReader<'a> {
                         }
                     }
                 }
+                // R2007+ DXF: the cell's override flags, all 32 bits (the legacy cell record's flag word).
                 91 => {
                     if let (Some(c), Some(value)) = (cur.as_mut(), pair.as_i32()) {
-                        c.flag = value;
+                        if value != 0 {
+                            let style = c.style.get_or_insert_with(crate::entities::CellStyle::new);
+                            style.override_flags |= value;
+                            style.legacy_override_bits = true;
+                            style.property_flags |= crate::entities::table::legacy_override_properties(value);
+                        }
                     }
                 }
                 93 if in_value => {

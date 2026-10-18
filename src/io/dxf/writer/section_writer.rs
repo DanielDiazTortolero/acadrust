@@ -11002,11 +11002,14 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         let merge_height = merged_range.map_or(cell.merge_height, |range| range.row_count() as i32);
         self.writer.write_i16(175, merge_width as i16)?;
         self.writer.write_i16(176, merge_height as i16)?;
+        // The cell's override flags: all 32 bits from R2007 on (group 91), the low 16 bits before (group 177),
+        // as AutoCAD writes them. The style codes below are the overrides these flags announce.
+        let override_flags = cell.style.as_ref().map_or(0, |s| s.override_flags);
         if self.dxf_version >= DxfVersion::AC1021 {
-            self.writer.write_i32(91, cell.flag)?;
+            self.writer.write_i32(91, override_flags)?;
             self.writer.write_i32(92, cell.state.bits() as i32)?;
         } else {
-            self.writer.write_i16(177, cell.flag as i16)?;
+            self.writer.write_i16(177, (override_flags & 0xFFFF) as u16 as i16)?;
         }
 
         // Virtual edge flag
@@ -11086,17 +11089,19 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             if f & 0x20 != 0 {
                 self.writer.write_double(140, style.text_height)?;
             }
-            for (color_bit, lw_bit, (color_code, weight_code, visibility_code), border) in [
-                (0x40, 0x400, (69, 279, 289), &style.top_border),
-                (0x80, 0x800, (65, 275, 285), &style.right_border),
-                (0x100, 0x1000, (66, 276, 286), &style.bottom_border),
-                (0x200, 0x2000, (68, 278, 288), &style.left_border),
+            for (color_bit, lw_bit, visibility_bit, (color_code, weight_code, visibility_code), border) in [
+                (0x40, 0x400, 0x4000, (69, 279, 289), &style.top_border),
+                (0x80, 0x800, 0x8000, (65, 275, 285), &style.right_border),
+                (0x100, 0x1000, 0x10000, (66, 276, 286), &style.bottom_border),
+                (0x200, 0x2000, 0x20000, (68, 278, 288), &style.left_border),
             ] {
                 if f & color_bit != 0 {
                     self.writer.write_color(color_code, border.color)?;
                 }
                 if f & lw_bit != 0 {
                     self.writer.write_i16(weight_code, border.line_weight.value())?;
+                }
+                if f & visibility_bit != 0 {
                     self.writer.write_bool(visibility_code, !border.invisible)?;
                 }
             }
