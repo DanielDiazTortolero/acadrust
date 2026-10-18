@@ -4791,6 +4791,24 @@ impl CadDocument {
 
         self.next_handle = max_handle;
 
+        // --- 1z. Layers that entities name but the LAYER table lacks ---
+        // AutoCAD's DXF import creates such a layer with default properties, so
+        // the entities keep their layer; without it the DWG writer can only fall
+        // back to layer "0". The new entries get their handles in step 1a.
+        let mut undefined_layers: Vec<String> = Vec::new();
+        for entity in self.entities.iter() {
+            let name = &entity.common().layer;
+            if !name.is_empty()
+                && self.layers.get(name).is_none()
+                && !undefined_layers.iter().any(|n| n.eq_ignore_ascii_case(name))
+            {
+                undefined_layers.push(name.clone());
+            }
+        }
+        for name in undefined_layers {
+            let _ = self.layers.add(Layer::new(name));
+        }
+
         // --- 1a. Assign handles to records the file left without one ---
         // Handle-less sources (R12 and earlier carry no handle records at
         // all) leave table entries and objects with NULL handles; writing
