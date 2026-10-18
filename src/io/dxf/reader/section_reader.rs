@@ -616,6 +616,8 @@ fn registered_class_cpp_name(name: &str) -> &'static str {
     }
 }
 
+/// Group values of a class object, by subclass marker and group code. Markers match without regard to
+/// case: R2000 DXF spells some of them in capitals (ACDBDATATABLE for AcDbDataTable).
 #[derive(Default)]
 struct ClassDxfFields {
     sections: std::collections::HashMap<
@@ -625,9 +627,13 @@ struct ClassDxfFields {
 }
 
 impl ClassDxfFields {
+    fn key(section: &str) -> String {
+        section.to_ascii_lowercase()
+    }
+
     fn push(&mut self, section: &str, code: i32, value: String) {
         self.sections
-            .entry(section.to_string())
+            .entry(Self::key(section))
             .or_default()
             .entry(code)
             .or_default()
@@ -636,7 +642,7 @@ impl ClassDxfFields {
 
     fn string(&mut self, section: &str, code: i32) -> String {
         self.sections
-            .get_mut(section)
+            .get_mut(&Self::key(section))
             .and_then(|values| values.get_mut(&code))
             .and_then(|values| values.pop_front())
             .unwrap_or_default()
@@ -644,7 +650,7 @@ impl ClassDxfFields {
 
     fn has(&self, section: &str, code: i32) -> bool {
         self.sections
-            .get(section)
+            .get(&Self::key(section))
             .and_then(|values| values.get(&code))
             .map(|values| !values.is_empty())
             .unwrap_or(false)
@@ -652,7 +658,7 @@ impl ClassDxfFields {
 
     fn strings(&mut self, section: &str, code: i32) -> Vec<String> {
         self.sections
-            .get_mut(section)
+            .get_mut(&Self::key(section))
             .and_then(|values| values.remove(&code))
             .map(|values| values.into_iter().collect())
             .unwrap_or_default()
