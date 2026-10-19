@@ -537,6 +537,9 @@ impl DxfReader {
         diagnostics: &mut Vec<ReadDiagnostic>,
     ) {
         *skipped_records = skipped_records.saturating_add(section_reader.skipped_records());
+        for (handle, stored, read) in section_reader.take_legacy_attribute_values() {
+            document.legacy_attribute_values.insert(handle, (stored, read));
+        }
         for recovery in section_reader.take_recovery_errors() {
             let message = format!("Error reading {} record: {}", section, recovery.message);
             document.notifications.notify(

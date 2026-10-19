@@ -206,6 +206,7 @@ impl<'a> SemanticInventoryV1<'a> {
             original_objects: _,
             raw_record_owners: _,
             legacy_attribute_tags: _,
+            legacy_attribute_values: _,
             dwg_data_store_handles: _,
             section_view_style: _,
             view_rep_refs: _,

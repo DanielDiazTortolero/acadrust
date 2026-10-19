@@ -212,6 +212,8 @@ struct Pass2Output {
     view_rep_refs: HashMap<Handle, Vec<Handle>>,
     section_view_reps: Vec<Handle>,
     section_view_style: Option<crate::entities::SectionViewStyle>,
+    /// Multiline attributes' stored one-line values (CadDocument::legacy_attribute_values).
+    legacy_attribute_values: HashMap<Handle, (String, String)>,
 }
 
 impl Pass2Output {
@@ -243,6 +245,7 @@ impl Pass2Output {
             view_rep_refs: HashMap::new(),
             section_view_reps: Vec::new(),
             section_view_style: None,
+            legacy_attribute_values: HashMap::new(),
         }
     }
 
@@ -267,6 +270,7 @@ impl Pass2Output {
         self.dgn_ls_components.remove(&handle);
         self.view_rep_refs.remove(&handle);
         self.section_view_reps.retain(|h| *h != handle);
+        self.legacy_attribute_values.remove(&handle);
     }
 }
 
@@ -2078,6 +2082,9 @@ impl DwgDocumentBuilder {
                 document
                     .view_rep_refs
                     .extend(chunk.output.view_rep_refs.drain());
+                document
+                    .legacy_attribute_values
+                    .extend(chunk.output.legacy_attribute_values.drain());
                 for view_rep in chunk.output.section_view_reps.drain(..) {
                     if !document.section_view_reps.contains(&view_rep) {
                         document.section_view_reps.push(view_rep);
@@ -4735,6 +4742,11 @@ impl DwgDocumentBuilder {
                     e.embedded_mtext = data.embedded_mtext.map(|mtext| {
                         Box::new(mtext_from_data(mtext, EntityCommon::default(), &maps))
                     });
+                    if let Some(one_line) = data.stored_value.filter(|v| *v != e.default_value) {
+                        document
+                            .legacy_attribute_values
+                            .insert(e.common.handle, (one_line, e.default_value.clone()));
+                    }
                     let _ = document.add_entity(EntityType::AttributeDefinition(e));
                 }
                 OBJ_ATTRIB => {
@@ -4795,6 +4807,11 @@ impl DwgDocumentBuilder {
                     e.embedded_mtext = data.embedded_mtext.map(|mtext| {
                         Box::new(mtext_from_data(mtext, EntityCommon::default(), &maps))
                     });
+                    if let Some(one_line) = data.stored_value.filter(|v| *v != e.value) {
+                        document
+                            .legacy_attribute_values
+                            .insert(e.common.handle, (one_line, e.value.clone()));
+                    }
                     // Collect pending — will be attached to parent INSERT
                     // after Pass 2 (owner_handle = INSERT handle).
                     pending_attributes

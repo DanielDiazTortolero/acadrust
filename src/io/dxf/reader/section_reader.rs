@@ -1463,6 +1463,9 @@ pub struct SectionReader<'a> {
     failsafe: bool,
     skipped_records: usize,
     recovery_errors: Vec<SectionRecoveryError>,
+    /// Multiline attributes' stored one-line values: (handle, stored, value read); the DXF reader moves them into
+    /// `CadDocument::legacy_attribute_values`.
+    legacy_attribute_values: Vec<(Handle, String, String)>,
 }
 
 /// A record-level error recovered by a section reader.
@@ -1481,7 +1484,13 @@ impl<'a> SectionReader<'a> {
             failsafe: false,
             skipped_records: 0,
             recovery_errors: Vec::new(),
+            legacy_attribute_values: Vec::new(),
         }
+    }
+
+    /// The multiline attributes' stored one-line values read so far: (handle, stored, value read).
+    pub fn take_legacy_attribute_values(&mut self) -> Vec<(Handle, String, String)> {
+        std::mem::take(&mut self.legacy_attribute_values)
     }
 
     /// Enable bounded record-level recovery. Strict readers retain the
@@ -16647,8 +16656,12 @@ impl<'a> SectionReader<'a> {
                 // carries the real default text when the own code 1 is empty.
                 101 => {
                     let mtext = self.read_attrib_embedded_mtext()?;
+                    let one_line = default_value.clone();
                     if !mtext.value.is_empty() {
                         default_value = mtext.value.clone();
+                    }
+                    if one_line != default_value {      // the one-line part as stored (legacy_attribute_values)
+                        self.legacy_attribute_values.push((common.handle, one_line, default_value.clone()));
                     }
                     embedded_mtext = Some(Box::new(mtext));
                 }
@@ -17531,8 +17544,12 @@ impl<'a> SectionReader<'a> {
                 // real text, whatever the entity's own code 1 holds.
                 101 => {
                     let mtext = self.read_attrib_embedded_mtext()?;
+                    let one_line = attrib.value.clone();
                     if !mtext.value.is_empty() {
                         attrib.value = mtext.value.clone();
+                    }
+                    if one_line != attrib.value {       // the one-line part as stored (legacy_attribute_values)
+                        self.legacy_attribute_values.push((attrib.common.handle, one_line, attrib.value.clone()));
                     }
                     attrib.is_multiline = true;
                     attrib.embedded_mtext = Some(Box::new(mtext));

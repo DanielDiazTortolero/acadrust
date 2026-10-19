@@ -1305,6 +1305,17 @@ impl<'a> DwgObjectWriter<'a> {
             &att.common.face_visual_style_handle,
             &att.common.edge_visual_style_handle,
         );
+        // a multiline value's one-line part as the drawing stored it (AutoCAD leaves it empty)
+        let one_line = if att.embedded_mtext.is_some() || att.is_multiline {
+            crate::document::legacy_attribute_one_line(
+                &self.document.legacy_attribute_values,
+                att.common.handle,
+                &att.value,
+            )
+            .to_string()
+        } else {
+            att.value.clone()
+        };
         self.write_text_entity_data(
             att.insertion_point,
             att.alignment_point,
@@ -1314,7 +1325,7 @@ impl<'a> DwgObjectWriter<'a> {
             att.rotation,
             att.height,
             att.width_factor,
-            &att.value,
+            &one_line,
             att.text_generation_flags,
             att.horizontal_alignment as i16,
             att.vertical_alignment as i16,
@@ -4793,6 +4804,17 @@ impl<'a> DwgObjectWriter<'a> {
         self.entity_preamble(common::OBJ_ATTDEF, &e.common);
 
         // writeTextEntity portion
+        // a multiline value's one-line part as the drawing stored it (AutoCAD leaves it empty)
+        let one_line = if e.embedded_mtext.is_some() || e.is_multiline {
+            crate::document::legacy_attribute_one_line(
+                &self.document.legacy_attribute_values,
+                e.common.handle,
+                &e.default_value,
+            )
+            .to_string()
+        } else {
+            e.default_value.clone()
+        };
         self.write_text_entity_data(
             e.insertion_point,
             e.alignment_point,
@@ -4802,7 +4824,7 @@ impl<'a> DwgObjectWriter<'a> {
             e.rotation,
             e.height,
             e.width_factor,
-            &e.default_value,
+            &one_line,
             e.text_generation_flags,
             e.horizontal_alignment as i16,
             e.vertical_alignment as i16,
@@ -4876,6 +4898,17 @@ impl<'a> DwgObjectWriter<'a> {
         self.entity_preamble(common::OBJ_ATTRIB, &e.common);
 
         // writeTextEntity portion
+        // a multiline value's one-line part as the drawing stored it (AutoCAD leaves it empty)
+        let one_line = if e.embedded_mtext.is_some() || e.is_multiline {
+            crate::document::legacy_attribute_one_line(
+                &self.document.legacy_attribute_values,
+                e.common.handle,
+                &e.value,
+            )
+            .to_string()
+        } else {
+            e.value.clone()
+        };
         self.write_text_entity_data(
             e.insertion_point,
             e.alignment_point,
@@ -4885,7 +4918,7 @@ impl<'a> DwgObjectWriter<'a> {
             e.rotation,
             e.height,
             e.width_factor,
-            &e.value,
+            &one_line,
             e.text_generation_flags,
             e.horizontal_alignment as i16,
             e.vertical_alignment as i16,

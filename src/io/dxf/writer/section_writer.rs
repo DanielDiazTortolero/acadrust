@@ -104,6 +104,8 @@ pub struct SectionWriter<'a, W: DxfStreamWriter> {
     loft_reference_appid: Option<Handle>,
     /// The document's stored pre-2018 multiline attribute tags (`CadDocument::legacy_attribute_tags`).
     legacy_attribute_tags: HashMap<Handle, (String, String)>,
+    /// The document's stored multiline attribute one-line values (`CadDocument::legacy_attribute_values`).
+    legacy_attribute_values: HashMap<Handle, (String, String)>,
 }
 
 impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
@@ -128,13 +130,15 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             loft_input_entities: HashMap::new(),
             loft_reference_appid: None,
             legacy_attribute_tags: HashMap::new(),
+            legacy_attribute_values: HashMap::new(),
         }
     }
 
-    /// Take the document's stored pre-2018 multiline attribute tags, so the attributes keep them (see
-    /// `CadDocument::legacy_attribute_tags`).
-    pub fn set_legacy_attribute_tags(&mut self, document: &CadDocument) {
+    /// Take the document's stored multiline attribute tags and one-line values, so the attributes keep them (see
+    /// `CadDocument::legacy_attribute_tags` and `legacy_attribute_values`).
+    pub fn set_legacy_attribute_data(&mut self, document: &CadDocument) {
         self.legacy_attribute_tags = document.legacy_attribute_tags.clone();
+        self.legacy_attribute_values = document.legacy_attribute_values.clone();
     }
 
     fn attribute_tag(&self, handle: Handle, tag: &str) -> String {
@@ -5201,6 +5205,7 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         // Default value (a multiline one also lives in the embedded MTEXT;
         // the reference application reads it from here too)
         self.write_attribute_text_value(
+            attdef.common.handle,
             multiline,
             &attdef.default_value,
             attdef.embedded_mtext.as_deref(),
@@ -5345,12 +5350,18 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
 
     fn write_attribute_text_value(
         &mut self,
+        handle: Handle,
         multiline: bool,
         value: &str,
         embedded: Option<&MText>,
     ) -> Result<()> {
+        // a multiline value's one-line part: as the drawing stored it (AutoCAD leaves it empty), else the full text
         let value = match embedded {
-            Some(mtext) if multiline => mtext.value.as_str(),
+            Some(mtext) if multiline => crate::document::legacy_attribute_one_line(
+                &self.legacy_attribute_values,
+                handle,
+                mtext.value.as_str(),
+            ),
             _ => value,
         };
         // DXF is line based: a line break in the value would end the group.
@@ -5378,6 +5389,7 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         // Value (a multiline one also lives in the embedded MTEXT; the
         // reference application reads it from here too)
         self.write_attribute_text_value(
+            attrib.common.handle,
             multiline,
             &attrib.value,
             attrib.embedded_mtext.as_deref(),

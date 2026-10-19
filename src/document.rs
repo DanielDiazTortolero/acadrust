@@ -54,6 +54,21 @@ pub(crate) fn legacy_attribute_tag<'a>(
     tag
 }
 
+/// The one-line value a writer puts out for a multiline attribute or definition whose full text is `value`: the
+/// stored one (`stored`: handle -> (stored one-line value, value read), [`CadDocument::legacy_attribute_values`])
+/// while the value is unchanged; an empty one stays empty after an edit (AutoCAD's form); else the text itself.
+pub(crate) fn legacy_attribute_one_line<'a>(
+    stored: &'a HashMap<Handle, (String, String)>,
+    handle: Handle,
+    value: &'a str,
+) -> &'a str {
+    match stored.get(&handle) {
+        Some((one_line, read)) if read == value => one_line,
+        Some((one_line, _)) if one_line.is_empty() => "",
+        _ => value,
+    }
+}
+
 fn material_checker_texture(entries: &[XRecordEntry]) -> Option<MaterialTexture> {
     if !entries.iter().any(|entry| {
         entry.code == 301
@@ -1376,6 +1391,12 @@ pub struct CadDocument {
     /// resolved one (see [`CadDocument::attribute_tag_to_write`]).
     pub legacy_attribute_tags: HashMap<Handle, (String, String)>,
 
+    /// Multiline attributes and definitions whose stored one-line value differs from the value taken from their
+    /// embedded MTEXT: handle -> (stored one-line value, the value read). AutoCAD leaves the one-line part empty; the
+    /// writers keep it as stored while the value is unchanged, and keep an empty one empty after an edit
+    /// (see [`legacy_attribute_one_line`]).
+    pub legacy_attribute_values: HashMap<Handle, (String, String)>,
+
     /// `(handle, byte length, hash)` of SAB bodies when `raw_acds_data` was
     /// captured. Used to reject stale section passthrough after geometry edits.
     #[cfg_attr(feature = "serde", serde(skip))]
@@ -1563,6 +1584,7 @@ impl CadDocument {
             original_objects: HashMap::new(),
             raw_record_owners: HashMap::new(),
             legacy_attribute_tags: HashMap::new(),
+            legacy_attribute_values: HashMap::new(),
             raw_acds_fingerprint: Vec::new(),
             dwg_data_store_handles: HashSet::new(),
             section_view_style: None,

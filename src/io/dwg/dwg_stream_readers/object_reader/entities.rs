@@ -2227,6 +2227,9 @@ pub struct AttributeCommonData {
     pub field_length: i16,
     pub flags: u8,
     pub lock_position: bool,
+    /// A multiline attribute's one-line value as stored, before the embedded MTEXT's text replaced it in
+    /// `text_data.value` (AutoCAD leaves it empty).
+    pub stored_value: Option<String>,
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -4380,7 +4383,8 @@ pub fn read_attribute_definition(
 
     // A multiline attribute (mtext_type > 1) embeds a full MTEXT here; its text
     // is the real multiline default value, which the single-line field above
-    // truncates to the first line.
+    // truncates to the first line (or AutoCAD leaves empty: kept in stored_value).
+    let mut stored_value = None;
     let embedded_mtext = if att_type > 1 {
         let mtext = read_embedded_mtext(reader, version, dxf_version);
         let annotative_data_size = reader.read_bit_short();
@@ -4389,7 +4393,7 @@ pub fn read_attribute_definition(
             let _application = reader.read_handle();
             let _unknown = reader.read_bit_short();
         }
-        text_data.value = mtext.value.clone();
+        stored_value = Some(std::mem::replace(&mut text_data.value, mtext.value.clone()));
         Some(mtext)
     } else {
         None
@@ -4420,6 +4424,7 @@ pub fn read_attribute_definition(
         field_length,
         flags,
         lock_position,
+        stored_value,
     }
 }
 
@@ -4445,7 +4450,8 @@ pub fn read_attribute_entity(
 
     // A multiline attribute (mtext_type > 1) embeds a full MTEXT here; its text
     // is the real multiline value, which the single-line field above truncates
-    // to the first line ("A" instead of "A\PB").
+    // to the first line ("A" instead of "A\PB"), or AutoCAD leaves empty: kept in stored_value.
+    let mut stored_value = None;
     let embedded_mtext = if att_type > 1 {
         let mtext = read_embedded_mtext(reader, version, dxf_version);
         let annotative_data_size = reader.read_bit_short();
@@ -4454,7 +4460,7 @@ pub fn read_attribute_entity(
             let _application = reader.read_handle();
             let _unknown = reader.read_bit_short();
         }
-        text_data.value = mtext.value.clone();
+        stored_value = Some(std::mem::replace(&mut text_data.value, mtext.value.clone()));
         Some(mtext)
     } else {
         None
@@ -4481,6 +4487,7 @@ pub fn read_attribute_entity(
         field_length,
         flags,
         lock_position,
+        stored_value,
     }
 }
 
