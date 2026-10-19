@@ -2827,6 +2827,23 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         Ok(())
     }
 
+    /// Connections as id/name pairs (92, 301, 93, 302, ...): AutoCAD's order for
+    /// the move, stretch and polar stretch actions, whose DXF it otherwise
+    /// discards. The other actions group the ids before the names.
+    fn write_dynamic_connection_pairs_dxf(
+        &mut self,
+        values: &[crate::objects::BlockConnection],
+        code: i32,
+        name_code: i32,
+    ) -> Result<()> {
+        for (index, value) in values.iter().enumerate() {
+            self.writer.write_i32(code + index as i32, value.code)?;
+            self.writer
+                .write_string(name_code + index as i32, &value.name)?;
+        }
+        Ok(())
+    }
+
     fn write_dynamic_action_with_base_dxf(
         &mut self,
         value: &crate::objects::BlockActionWithBasePoint,
@@ -3185,7 +3202,10 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             DynamicBlockData::AlignmentGrip(value) => {
                 self.write_dynamic_grip_dxf(&value.grip)?;
                 self.writer.write_subclass("AcDbBlockAlignmentGrip")?;
-                self.writer.write_point3d(140, value.orientation)?;
+                // 140/141/142 like the flip grip: AutoCAD discards the DXF on 140/150/160.
+                self.writer.write_double(140, value.orientation.x)?;
+                self.writer.write_double(141, value.orientation.y)?;
+                self.writer.write_double(142, value.orientation.z)?;
             }
             DynamicBlockData::FlipGrip(value) => {
                 self.write_dynamic_grip_dxf(&value.grip)?;
@@ -3203,8 +3223,13 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
                 self.writer.write_double(141, value.orientation.y)?;
                 self.writer.write_double(142, value.orientation.z)?;
             }
-            DynamicBlockData::LookupGrip(value)
-            | DynamicBlockData::PolarGrip(value)
+            DynamicBlockData::LookupGrip(value) => {
+                self.write_dynamic_grip_dxf(value)?;
+                // The record's marker is not the C++ class name (AcDbBlockLookupGrip,
+                // which CLASSES keeps); AutoCAD discards the DXF otherwise.
+                self.writer.write_subclass("AcDbBlockLookUpGrip")?;
+            }
+            DynamicBlockData::PolarGrip(value)
             | DynamicBlockData::RotationGrip(value)
             | DynamicBlockData::VisibilityGrip(value)
             | DynamicBlockData::XYGrip(value)
@@ -3246,10 +3271,12 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             }
             DynamicBlockData::LookupParameter(value) => {
                 self.write_dynamic_one_point_dxf(&value.parameter)?;
-                self.writer.write_subclass("AcDbBlockLookupParameter")?;
-                self.writer.write_i32(94, value.index)?;
+                // AutoCAD's marker (CLASSES keeps the C++ name AcDbBlockLookupParameter);
+                // it discards the DXF on the C++ spelling.
+                self.writer.write_subclass("AcDbBlockLookUpParameter")?;
                 self.writer.write_string(303, &value.lookup_name)?;
                 self.writer.write_string(304, &value.lookup_description)?;
+                self.writer.write_i32(94, value.index)?;
             }
             DynamicBlockData::PointParameter(value) => {
                 self.write_dynamic_one_point_dxf(&value.parameter)?;
@@ -3362,7 +3389,7 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             DynamicBlockData::MoveAction(value) => {
                 self.write_dynamic_action_dxf(&value.action)?;
                 self.writer.write_subclass("AcDbBlockMoveAction")?;
-                self.write_dynamic_connections_dxf(&value.connections, 92, 301)?;
+                self.write_dynamic_connection_pairs_dxf(&value.connections, 92, 301)?;
                 self.writer
                     .write_double(140, value.offsets.distance_multiplier)?;
                 self.writer.write_double(141, value.offsets.angle_offset)?;
@@ -3417,7 +3444,7 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             DynamicBlockData::StretchAction(value) => {
                 self.write_dynamic_action_dxf(&value.action)?;
                 self.writer.write_subclass("AcDbBlockStretchAction")?;
-                self.write_dynamic_connections_dxf(&value.connections, 92, 301)?;
+                self.write_dynamic_connection_pairs_dxf(&value.connections, 92, 301)?;
                 self.writer.write_i32(72, value.points.len() as i32)?;
                 for point in &value.points {
                     self.writer.write_point2d(1011, *point)?;
@@ -3450,7 +3477,7 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
                 // sample shows their codes.
                 self.write_dynamic_action_dxf(&value.action)?;
                 self.writer.write_subclass("AcDbBlockPolarStretchAction")?;
-                self.write_dynamic_connections_dxf(&value.connections, 92, 301)?;
+                self.write_dynamic_connection_pairs_dxf(&value.connections, 92, 301)?;
                 self.writer.write_i32(73, value.points.len() as i32)?;
                 for point in &value.points {
                     self.writer.write_point2d(1011, *point)?;

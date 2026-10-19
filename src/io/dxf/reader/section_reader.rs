@@ -1055,6 +1055,15 @@ impl DynamicDxfFields {
         Vector3::new(self.f64(section, 140), pick(141, 150), pick(142, 160))
     }
 
+    /// The first of these subclass markers the record has, else the first one.
+    fn marker<'a>(&self, names: &[&'a str]) -> &'a str {
+        names
+            .iter()
+            .copied()
+            .find(|name| self.sections.contains_key(*name))
+            .unwrap_or(names[0])
+    }
+
     fn point(&self, section: &str, x_code: i32) -> Vector3 {
         Vector3::new(
             self.f64(section, x_code),
@@ -4542,7 +4551,7 @@ impl<'a> SectionReader<'a> {
             }
             "BLOCKALIGNMENTGRIP" => DynamicBlockData::AlignmentGrip(BlockOrientedGrip {
                 grip: dynamic_dxf_grip(&fields),
-                orientation: fields.point("AcDbBlockAlignmentGrip", 140),
+                orientation: fields.vector_140("AcDbBlockAlignmentGrip"),
             }),
             "BLOCKFLIPGRIP" => DynamicBlockData::FlipGrip(BlockFlipGrip {
                 grip: dynamic_dxf_grip(&fields),
@@ -4594,12 +4603,17 @@ impl<'a> SectionReader<'a> {
                     value_set: dynamic_dxf_value_set(&fields, section, 96, 141, 307),
                 })
             }
-            "BLOCKLOOKUPPARAMETER" => DynamicBlockData::LookupParameter(BlockLookupParameter {
-                parameter: dynamic_dxf_one_point(&fields),
-                index: fields.i32("AcDbBlockLookupParameter", 94),
-                lookup_name: fields.text("AcDbBlockLookupParameter", 303),
-                lookup_description: fields.text("AcDbBlockLookupParameter", 304),
-            }),
+            "BLOCKLOOKUPPARAMETER" => {
+                // AutoCAD's marker; older acadrust output used the C++ class name.
+                let section =
+                    fields.marker(&["AcDbBlockLookUpParameter", "AcDbBlockLookupParameter"]);
+                DynamicBlockData::LookupParameter(BlockLookupParameter {
+                    parameter: dynamic_dxf_one_point(&fields),
+                    index: fields.i32(section, 94),
+                    lookup_name: fields.text(section, 303),
+                    lookup_description: fields.text(section, 304),
+                })
+            }
             "BLOCKPOINTPARAMETER" => DynamicBlockData::PointParameter(BlockPointParameter {
                 parameter: dynamic_dxf_one_point(&fields),
                 position_name: fields.text("AcDbBlockPointParameter", 303),
