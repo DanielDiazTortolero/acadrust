@@ -553,6 +553,50 @@ impl DwgDocumentBuilder {
         }
     }
 
+    /// A DWG leader's hook line and, from R2010 on, its annotation box are not stored: AutoCAD derives the hook
+    /// from the leader's vertices (`Leader::hook_rule`), one arrowhead long, and the box is its MTEXT annotation's
+    /// extents. Its DXF lists both, the hook's start as one more vertex before the last. Derive them the same way,
+    /// so a leader read from a DWG is the one read from AutoCAD's DXF of that drawing; the DWG writer leaves the
+    /// hook's start out again. Derived values only: the records keep the bytes they were read from.
+    fn derive_leader_hooks(document: &mut CadDocument) {
+        let version = document.dwg_source_version.unwrap_or(document.version);
+        let r13_14 = version <= crate::types::DxfVersion::AC1014;
+        let boxes: HashMap<Handle, (f64, f64)> = document
+            .entities()
+            .filter_map(|e| match e {
+                EntityType::MText(m) if m.extents_height > 0.0 || m.extents_width > 0.0 => {
+                    Some((m.common.handle, (m.extents_height, m.extents_width)))
+                }
+                _ => None,
+            })
+            .collect();
+        let lengths: HashMap<Handle, f64> = document
+            .entities()
+            .filter_map(|e| match e {
+                EntityType::Leader(l) => document.leader_hook_length(l, r13_14).map(|len| (l.common.handle, len)),
+                _ => None,
+            })
+            .collect();
+        for entity in document.entities_mut_keep_raw() {
+            let EntityType::Leader(l) = entity else {
+                continue;
+            };
+            if version > crate::types::DxfVersion::AC1021 && l.creation_type == LeaderCreationType::WithText {
+                if let Some(&(height, width)) = boxes.get(&l.annotation_handle) {
+                    l.text_height = height;
+                    l.text_width = width;
+                }
+            }
+            if l.hook_rule(&l.vertices) {
+                if let Some(start) = lengths.get(&l.common.handle).and_then(|len| l.hook_start(&l.vertices, *len)) {
+                    let at = l.vertices.len() - 1;
+                    l.vertices.insert(at, start);
+                }
+                l.hookline_enabled = true;
+            }
+        }
+    }
+
     fn block_marker_name(&self, handle: u64) -> Option<String> {
         let offset = self.obj_reader.offset_for(handle)?;
         let offset = usize::try_from(offset).ok()?;
@@ -3438,6 +3482,7 @@ impl DwgDocumentBuilder {
         // are assembled.
         Self::hydrate_block_markers(document);
         Self::number_paper_space_viewports(document);
+        Self::derive_leader_hooks(document);
         document.ensure_model_layout();
 
         document.original_objects = document

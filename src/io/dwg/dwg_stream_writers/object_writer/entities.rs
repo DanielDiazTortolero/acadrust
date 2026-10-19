@@ -947,10 +947,15 @@ impl<'a> DwgObjectWriter<'a> {
         // Drawing dir BS 72 (unconditional — written for ALL versions)
         self.writer.write_bit_short(e.drawing_direction as i16);
 
-        // Extents ht BD (DXF 43, output-only)
-        self.writer.write_bit_double(e.extents_height);
-        // Extents wid BD (DXF 42, output-only)
-        self.writer.write_bit_double(e.extents_width);
+        // Extents ht BD (DXF 43, output-only), Extents wid BD (DXF 42, output-only): when a DXF gave none, a text
+        // leader's box is this MTEXT's extents (AutoCAD's own DWG holds the same numbers in both)
+        let (extents_height, extents_width) = if e.extents_height == 0.0 && e.extents_width == 0.0 {
+            self.leader_boxes.get(&e.common.handle).copied().unwrap_or((0.0, 0.0))
+        } else {
+            (e.extents_height, e.extents_width)
+        };
+        self.writer.write_bit_double(extents_height);
+        self.writer.write_bit_double(extents_width);
 
         // Text TV 1
         self.writer.write_variable_text(&e.value);
@@ -1756,6 +1761,26 @@ impl<'a> DwgObjectWriter<'a> {
 
     // â”€â”€ Leader â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    /// The vertices a DWG stores for `e`: without its hook line's start (which the model lists, as AutoCAD's DXF
+    /// does) when AutoCAD draws that same hook from the others (`Leader::hook_rule`, one arrowhead long), as AutoCAD
+    /// stores it; otherwise every vertex, so the leader looks the same either way.
+    fn leader_dwg_vertices<'v>(&self, e: &'v Leader) -> std::borrow::Cow<'v, [Vector3]> {
+        let n = e.vertices.len();
+        if e.hookline_enabled && n >= 3 {
+            let mut stored = e.vertices.clone();
+            let start = stored.remove(n - 2);
+            let length = self.document.leader_hook_length(e, self.version.r13_14_only());
+            if e.hook_rule(&stored) {
+                if let Some(expected) = length.and_then(|len| e.hook_start(&stored, len)) {
+                    if expected.distance(&start) <= 1e-9 * expected.length().max(1.0) {
+                        return std::borrow::Cow::Owned(stored);
+                    }
+                }
+            }
+        }
+        std::borrow::Cow::Borrowed(&e.vertices)
+    }
+
     fn write_leader(&mut self, e: &Leader) {
         self.entity_preamble(common::OBJ_LEADER, &e.common);
 
@@ -1766,9 +1791,11 @@ impl<'a> DwgObjectWriter<'a> {
         // Path type BS
         self.writer.write_bit_short(e.path_type as i16);
 
-        // Numpts BL + vertices
-        self.writer.write_bit_long(e.vertices.len() as i32);
-        for pt in &e.vertices {
+        // Numpts BL + vertices (a hook AutoCAD derives is not stored)
+        let vertices = self.leader_dwg_vertices(e);
+        let derived_hook = vertices.len() < e.vertices.len();
+        self.writer.write_bit_long(vertices.len() as i32);
+        for pt in vertices.iter() {
             self.writer.write_3bit_double(*pt);
         }
 
@@ -1809,9 +1836,12 @@ impl<'a> DwgObjectWriter<'a> {
         self.writer.write_bit(e.arrow_enabled);
 
         // R13-R14 names this field arrowhead type.  R2000+ retains the same
-        // stream slot as an undocumented bit-short.
+        // stream slot as an undocumented bit-short.  A derived hook keeps the
+        // bits as read: AutoCAD's own R14 sample has one with bit 8 clear.
         let arrowhead_or_unknown = if self.version.r13_14_only() {
-            if e.hookline_enabled {
+            if derived_hook {
+                e.arrowhead_type
+            } else if e.hookline_enabled {
                 e.arrowhead_type | 8
             } else {
                 e.arrowhead_type & !8

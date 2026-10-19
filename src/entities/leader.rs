@@ -378,6 +378,74 @@ impl Leader {
         self.annotation_handle = handle;
         self
     }
+
+    /// Whether AutoCAD draws a hook line at the end of `vertices` (the leader's vertices as a DWG stores them): a
+    /// leader to a text annotation, along a straight path, whose last segment is more than 15° off its horizontal
+    /// direction ends in a short segment along that direction, one arrowhead long (DIMASZ, which "also controls the
+    /// size of hook lines"). From R2000 on a DWG stores no hook flag, only the leader's own vertices, and AutoCAD
+    /// draws the hook from this rule; its DXF lists the hook's start as one more vertex before the last (75 = 1),
+    /// which is the form this model holds (see [`Leader::hook_start`]).
+    pub fn hook_rule(&self, vertices: &[Vector3]) -> bool {
+        if self.creation_type != LeaderCreationType::WithText
+            || self.path_type != LeaderPathType::StraightLine
+            || self.annotation_handle.is_null()
+        {
+            return false; // the hook connects the leader to its text: none without one
+        }
+        let [.., a, b] = vertices else {
+            return false;
+        };
+        let segment = *b - *a;
+        let length = segment.length();
+        length > 0.0 && segment.cross(&self.hook_axis()).length() / length > 15f64.to_radians().sin()
+    }
+
+    /// Where a hook line `length` long starts when it ends at the last of `vertices`: from there along the
+    /// horizontal direction, away from the annotation (`hookline_direction`: Opposite = against that direction).
+    pub fn hook_start(&self, vertices: &[Vector3], length: f64) -> Option<Vector3> {
+        let last = *vertices.last()?;
+        let sign = if self.hookline_direction == HooklineDirection::Same { 1.0 } else { -1.0 };
+        Some(last + self.hook_axis() * (sign * length))
+    }
+
+    /// A value of the leader's own dimension-style override (the ACAD application's DSTYLE xdata), by the
+    /// dimension variable's DXF code (41 DIMASZ, 40 DIMSCALE, ...).
+    pub fn dimstyle_override(&self, code: i16) -> Option<f64> {
+        use crate::xdata::XDataValue;
+        let record = self
+            .common
+            .extended_data
+            .records()
+            .iter()
+            .find(|r| r.application_name.eq_ignore_ascii_case("ACAD"))?;
+        let values = &record.values;
+        let start = values.iter().position(|v| matches!(v, XDataValue::String(s) if s.eq_ignore_ascii_case("DSTYLE")))?;
+        let mut i = start + 1;
+        while i + 1 < values.len() {
+            match (&values[i], &values[i + 1]) {
+                (XDataValue::ControlString(s), _) if s == "}" => break,
+                (XDataValue::Integer16(c), v) if *c == code => {
+                    return match v {
+                        XDataValue::Real(x) | XDataValue::Distance(x) | XDataValue::ScaleFactor(x) => Some(*x),
+                        XDataValue::Integer16(x) => Some(*x as f64),
+                        XDataValue::Integer32(x) => Some(*x as f64),
+                        _ => None,
+                    };
+                }
+                (XDataValue::Integer16(_), _) => i += 2,
+                _ => i += 1,
+            }
+        }
+        None
+    }
+
+    fn hook_axis(&self) -> Vector3 {
+        if self.horizontal_direction.length() > 0.0 {
+            self.horizontal_direction.normalize()
+        } else {
+            Vector3::UNIT_X
+        }
+    }
 }
 
 impl Default for Leader {

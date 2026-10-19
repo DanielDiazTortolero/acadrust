@@ -138,6 +138,9 @@ pub struct DwgObjectWriter<'a> {
     /// Compound entity -> its child records as read (VERTEX…, SEQEND), from `raw_record_owners`: an untouched
     /// heavy polyline is copied verbatim with them.
     pub(super) compound_children: std::sync::Arc<std::collections::HashMap<u64, Vec<u64>>>,
+    /// Text leader's annotation MTEXT -> the leader's box (height, width): the extents an MTEXT read from a DXF
+    /// lacks (AutoCAD leaves 42/43 out), which an R2010+ DWG keeps the leader's box in.
+    pub(super) leader_boxes: std::sync::Arc<std::collections::HashMap<Handle, (f64, f64)>>,
 }
 
 struct ParallelEntityBatch {
@@ -279,7 +282,24 @@ impl<'a> DwgObjectWriter<'a> {
             xdic_owner_index: std::sync::Arc::new(Self::build_xdic_owner_index(document)),
             block_users: std::sync::Arc::new(Self::build_block_users(document)),
             compound_children: std::sync::Arc::new(Self::build_compound_children(document)),
+            leader_boxes: std::sync::Arc::new(Self::build_leader_boxes(document)),
         })
+    }
+
+    fn build_leader_boxes(document: &CadDocument) -> std::collections::HashMap<Handle, (f64, f64)> {
+        document
+            .entities()
+            .filter_map(|entity| match entity {
+                EntityType::Leader(l)
+                    if l.creation_type == crate::entities::LeaderCreationType::WithText
+                        && !l.annotation_handle.is_null()
+                        && (l.text_height > 0.0 || l.text_width > 0.0) =>
+                {
+                    Some((l.annotation_handle, (l.text_height, l.text_width)))
+                }
+                _ => None,
+            })
+            .collect()
     }
 
     fn build_compound_children(document: &CadDocument) -> std::collections::HashMap<u64, Vec<u64>> {
@@ -2088,6 +2108,7 @@ impl<'a> DwgObjectWriter<'a> {
             xdic_owner_index: self.xdic_owner_index.clone(),
             block_users: self.block_users.clone(),
             compound_children: self.compound_children.clone(),
+            leader_boxes: self.leader_boxes.clone(),
             owner_overrides: std::collections::HashMap::new(),
             linetype_handles: std::collections::HashMap::new(),
         };

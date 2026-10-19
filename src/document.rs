@@ -3904,6 +3904,25 @@ impl CadDocument {
         self.entities().count()
     }
 
+    /// How long AutoCAD draws `leader`'s hook line ([`Leader::hook_rule`](crate::entities::Leader::hook_rule)):
+    /// one arrowhead, DIMASZ × DIMSCALE of its dimension style with the leader's own overrides (DIMSCALE 0, scaled
+    /// to paper space, counts as 1). An R13/R14 leader keeps the size it was made with (`arrow_size`), which
+    /// `stored_size` takes when it is set. None when the style is unknown, annotative (the length then follows the
+    /// annotation scale, which this doesn't model), or the size isn't positive.
+    pub fn leader_hook_length(&self, leader: &crate::entities::Leader, stored_size: bool) -> Option<f64> {
+        if stored_size && leader.arrow_size > 0.0 {
+            return Some(leader.arrow_size);
+        }
+        let style = self.dim_styles.get(&leader.dimension_style);
+        if style.is_some_and(|s| s.annotative) || leader.common.extended_data.get_record("AcadAnnotative").is_some() {
+            return None;
+        }
+        let size = leader.dimstyle_override(41).or(style.map(|s| s.dimasz))?;
+        let scale = leader.dimstyle_override(40).or(style.map(|s| s.dimscale)).unwrap_or(1.0);
+        let length = size * if scale == 0.0 { 1.0 } else { scale };
+        (length > 0.0).then_some(length)
+    }
+
     /// Iterate over all drawing entities.
     ///
     /// Structural BLOCK/ENDBLK markers are stored in the backing vector (the
