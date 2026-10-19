@@ -102,6 +102,8 @@ pub struct SectionWriter<'a, W: DxfStreamWriter> {
     loft_input_entities: HashMap<Handle, EmbeddedEntity>,
     /// Extra registration required by the loft-reference XDATA extension.
     loft_reference_appid: Option<Handle>,
+    /// The document's stored pre-2018 multiline attribute tags (`CadDocument::legacy_attribute_tags`).
+    legacy_attribute_tags: HashMap<Handle, (String, String)>,
 }
 
 impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
@@ -125,7 +127,18 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             block_record_names: HashMap::new(),
             loft_input_entities: HashMap::new(),
             loft_reference_appid: None,
+            legacy_attribute_tags: HashMap::new(),
         }
+    }
+
+    /// Take the document's stored pre-2018 multiline attribute tags, so the attributes keep them (see
+    /// `CadDocument::legacy_attribute_tags`).
+    pub fn set_legacy_attribute_tags(&mut self, document: &CadDocument) {
+        self.legacy_attribute_tags = document.legacy_attribute_tags.clone();
+    }
+
+    fn attribute_tag(&self, handle: Handle, tag: &str) -> String {
+        crate::document::legacy_attribute_tag(&self.legacy_attribute_tags, handle, tag, self.dxf_version).to_string()
     }
 
     /// Build the set of all handles that will appear in the output DXF.
@@ -5229,8 +5242,9 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         // Prompt
         self.writer.write_string(3, &attdef.prompt)?;
 
-        // Tag
-        self.writer.write_string(2, &attdef.tag)?;
+        // Tag (a pre-2018 multiline definition's stored one)
+        let tag = self.attribute_tag(attdef.common.handle, &attdef.tag);
+        self.writer.write_string(2, &tag)?;
 
         // Attribute flags
         self.writer.write_i16(70, attdef.flags.to_bits() as i16)?;
@@ -5402,8 +5416,9 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             self.writer.write_byte(280, 0)?;
         }
 
-        // Tag
-        self.writer.write_string(2, &attrib.tag)?;
+        // Tag (a pre-2018 multiline attribute's stored one)
+        let tag = self.attribute_tag(attrib.common.handle, &attrib.tag);
+        self.writer.write_string(2, &tag)?;
 
         // Attribute flags
         self.writer.write_i16(70, attrib.flags.to_bits() as i16)?;

@@ -36,6 +36,24 @@ use std::sync::{Arc, Mutex};
 #[path = "document/evaluated_block_tests.rs"]
 mod evaluated_block_tests;
 
+/// The tag a writer puts out for an attribute or attribute definition: its stored tag (`stored`: handle -> (stored,
+/// resolved), [`CadDocument::legacy_attribute_tags`]) in pre-2018 output while its tag is still the resolved one.
+pub(crate) fn legacy_attribute_tag<'a>(
+    stored: &'a HashMap<Handle, (String, String)>,
+    handle: Handle,
+    tag: &'a str,
+    version: DxfVersion,
+) -> &'a str {
+    if version < DxfVersion::AC1032 {
+        if let Some((outer, resolved)) = stored.get(&handle) {
+            if resolved == tag {
+                return outer;
+            }
+        }
+    }
+    tag
+}
+
 fn material_checker_texture(entries: &[XRecordEntry]) -> Option<MaterialTexture> {
     if !entries.iter().any(|entry| {
         entry.code == 301
@@ -1352,6 +1370,12 @@ pub struct CadDocument {
     #[cfg_attr(feature = "serde", serde(skip))]
     pub(crate) raw_record_owners: HashMap<u64, u64>,
 
+    /// Pre-2018 multiline attributes and definitions whose stored tag differs from the tag resolved from their
+    /// ACAD_MLATT record: handle -> (stored tag, resolved tag). Those releases down-save the tag with an artificial
+    /// suffix ("NOTE_001"); the writers put the stored one back into pre-2018 output while the tag is still the
+    /// resolved one (see [`CadDocument::attribute_tag_to_write`]).
+    pub legacy_attribute_tags: HashMap<Handle, (String, String)>,
+
     /// `(handle, byte length, hash)` of SAB bodies when `raw_acds_data` was
     /// captured. Used to reject stale section passthrough after geometry edits.
     #[cfg_attr(feature = "serde", serde(skip))]
@@ -1538,6 +1562,7 @@ impl CadDocument {
             raw_records: HashMap::new(),
             original_objects: HashMap::new(),
             raw_record_owners: HashMap::new(),
+            legacy_attribute_tags: HashMap::new(),
             raw_acds_fingerprint: Vec::new(),
             dwg_data_store_handles: HashSet::new(),
             section_view_style: None,
@@ -4180,6 +4205,13 @@ impl CadDocument {
         }
     }
 
+    /// The tag to write for an attribute or attribute definition: the one it was stored with (a pre-2018 multiline
+    /// attribute's down-save tag, e.g. "NOTE_001") in pre-2018 output while its tag is still the one resolved from
+    /// its ACAD_MLATT record; otherwise its tag.
+    pub fn attribute_tag_to_write<'a>(&'a self, handle: Handle, tag: &'a str, version: DxfVersion) -> &'a str {
+        legacy_attribute_tag(&self.legacy_attribute_tags, handle, tag, version)
+    }
+
     /// Project typed properties whose authoritative storage is a named
     /// XRecord onto their public object models.
     pub fn resolve_xrecord_backed_properties(&mut self) {
@@ -4199,16 +4231,29 @@ impl CadDocument {
             })
         }).collect();
         if !multiline_tags.is_empty() {
+            // the stored tag is remembered so a save can put it back (legacy_attribute_tags)
+            let mut stored = Vec::new();
             for entity in self.entities_mut_keep_raw() {
                 match entity {
                     EntityType::AttributeDefinition(a) => {
-                        if let Some(tag) = multiline_tags.get(&a.common.handle) { a.tag = tag.clone(); }
+                        if let Some(tag) = multiline_tags.get(&a.common.handle) {
+                            if a.tag != *tag {
+                                stored.push((a.common.handle, std::mem::replace(&mut a.tag, tag.clone()), tag.clone()));
+                            }
+                        }
                     }
                     EntityType::Insert(i) => for a in &mut i.attributes {
-                        if let Some(tag) = multiline_tags.get(&a.common.handle) { a.tag = tag.clone(); }
+                        if let Some(tag) = multiline_tags.get(&a.common.handle) {
+                            if a.tag != *tag {
+                                stored.push((a.common.handle, std::mem::replace(&mut a.tag, tag.clone()), tag.clone()));
+                            }
+                        }
                     },
                     _ => {},
                 }
+            }
+            for (handle, outer, resolved) in stored {
+                self.legacy_attribute_tags.insert(handle, (outer, resolved));
             }
         }
         let advanced_values: HashMap<Handle, Vec<XRecordEntry>> = self

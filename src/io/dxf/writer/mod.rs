@@ -159,6 +159,7 @@ impl<'a> DxfWriter<'a> {
         let mut section_writer = SectionWriter::new(writer, handle_start, handle_seed);
         section_writer.set_version(output_version);
         section_writer.build_valid_handles(document);
+        section_writer.set_legacy_attribute_tags(document);
 
         // Write all sections
         section_writer.write_header(document)?;

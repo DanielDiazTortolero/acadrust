@@ -1357,8 +1357,9 @@ impl<'a> DwgObjectWriter<'a> {
             }
         }
 
-        // Tag, field length, flags
-        self.writer.write_variable_text(&att.tag);
+        // Tag (a pre-2018 multiline attribute's stored one, see legacy_attribute_tags), field length, flags
+        let tag = self.document.attribute_tag_to_write(att.common.handle, &att.tag, self.dxf_version).to_string();
+        self.writer.write_variable_text(&tag);
         self.writer.write_bit_short(att.field_length);
         let flag_byte = att.flags.to_bits();
         self.writer.write_byte(flag_byte as u8);
@@ -4846,8 +4847,9 @@ impl<'a> DwgObjectWriter<'a> {
             }
         }
 
-        // Tag, field length, flags
-        self.writer.write_variable_text(&e.tag);
+        // Tag (a pre-2018 multiline attribute's stored one, see legacy_attribute_tags), field length, flags
+        let tag = self.document.attribute_tag_to_write(e.common.handle, &e.tag, self.dxf_version).to_string();
+        self.writer.write_variable_text(&tag);
         self.writer.write_bit_short(e.field_length);
         let flag_byte = e.flags.to_bits();
         self.writer.write_byte(flag_byte as u8);
@@ -4926,8 +4928,9 @@ impl<'a> DwgObjectWriter<'a> {
             }
         }
 
-        // Tag, field length, flags
-        self.writer.write_variable_text(&e.tag);
+        // Tag (a pre-2018 multiline attribute's stored one, see legacy_attribute_tags), field length, flags
+        let tag = self.document.attribute_tag_to_write(e.common.handle, &e.tag, self.dxf_version).to_string();
+        self.writer.write_variable_text(&tag);
         self.writer.write_bit_short(e.field_length);
         let flag_byte = e.flags.to_bits();
         self.writer.write_byte(flag_byte as u8);
