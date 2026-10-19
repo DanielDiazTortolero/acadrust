@@ -1899,10 +1899,12 @@ impl DwgDocumentBuilder {
                     // bytes: the writer copies them verbatim while the modeled
                     // object still equals its read-time snapshot, since the
                     // models do not cover every bit strict readers expect.
-                    // A SEQEND keeps them too, so an untouched INSERT can be
-                    // copied with its ATTRIBs and SEQEND (it has no model).
+                    // A SEQEND and a polyline's VERTEX records keep them too, so an
+                    // untouched INSERT or heavy polyline can be copied with its
+                    // children (they have no model of their own, or no handle).
                     if capture_raw
                         || raw_type_code == OBJ_SEQEND
+                        || (OBJ_VERTEX_2D..=OBJ_VERTEX_PFACE_FACE).contains(&raw_type_code)
                         || class_names.dxf.get(&raw_type_code).is_some_and(|name| {
                             matches!(name.as_str(), "ACSH_EXTRUSION_CLASS" | "DIMASSOC")
                                 || crate::objects::is_associative_object_name(name)
@@ -2021,15 +2023,16 @@ impl DwgDocumentBuilder {
 
             let commit_started = web_time::Instant::now();
             for mut chunk in chunks {
+                // Always: the writer copies an untouched polyline with these children.
+                for (&owner, vertices) in &chunk.pending.vertices {
+                    for vertex in vertices {
+                        document.raw_record_owners.insert(vertex.handle().value(), owner);
+                    }
+                }
+                for (&owner, handle) in &chunk.pending.seqends {
+                    document.raw_record_owners.insert(handle.value(), owner);
+                }
                 if capture_raw {
-                    for (&owner, vertices) in &chunk.pending.vertices {
-                        for vertex in vertices {
-                            document.raw_record_owners.insert(vertex.handle().value(), owner);
-                        }
-                    }
-                    for (&owner, handle) in &chunk.pending.seqends {
-                        document.raw_record_owners.insert(handle.value(), owner);
-                    }
                     for (&owner, attributes) in &chunk.pending_attributes {
                         for attribute in attributes {
                             document

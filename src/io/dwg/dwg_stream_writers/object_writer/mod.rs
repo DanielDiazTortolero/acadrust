@@ -135,6 +135,9 @@ pub struct DwgObjectWriter<'a> {
     /// Cached fallback for owners without a direct extension-dictionary handle.
     pub(super) xdic_owner_index: std::sync::Arc<std::collections::HashMap<Handle, Handle>>,
     pub(super) block_users: std::sync::Arc<std::collections::HashMap<Handle, Vec<Handle>>>,
+    /// Compound entity -> its child records as read (VERTEX…, SEQEND), from `raw_record_owners`: an untouched
+    /// heavy polyline is copied verbatim with them.
+    pub(super) compound_children: std::sync::Arc<std::collections::HashMap<u64, Vec<u64>>>,
 }
 
 struct ParallelEntityBatch {
@@ -275,7 +278,19 @@ impl<'a> DwgObjectWriter<'a> {
             linetype_handles: std::collections::HashMap::new(),
             xdic_owner_index: std::sync::Arc::new(Self::build_xdic_owner_index(document)),
             block_users: std::sync::Arc::new(Self::build_block_users(document)),
+            compound_children: std::sync::Arc::new(Self::build_compound_children(document)),
         })
+    }
+
+    fn build_compound_children(document: &CadDocument) -> std::collections::HashMap<u64, Vec<u64>> {
+        let mut children: std::collections::HashMap<u64, Vec<u64>> = std::collections::HashMap::new();
+        for (&child, &owner) in &document.raw_record_owners {
+            children.entry(owner).or_default().push(child);
+        }
+        for list in children.values_mut() {
+            list.sort_unstable();
+        }
+        children
     }
 
     fn build_block_users(document: &CadDocument) -> std::collections::HashMap<Handle, Vec<Handle>> {
@@ -2072,6 +2087,7 @@ impl<'a> DwgObjectWriter<'a> {
             raw_excluded_handles: self.raw_excluded_handles.clone(),
             xdic_owner_index: self.xdic_owner_index.clone(),
             block_users: self.block_users.clone(),
+            compound_children: self.compound_children.clone(),
             owner_overrides: std::collections::HashMap::new(),
             linetype_handles: std::collections::HashMap::new(),
         };

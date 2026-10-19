@@ -73,6 +73,32 @@ impl<'a> DwgObjectWriter<'a> {
         Some(out)
     }
 
+    /// The verbatim records of an untouched heavy polyline's VERTEX records and SEQEND, when all `expected` of them
+    /// were read with it and every one can be copied (this version, not excluded, not re-owned). None otherwise.
+    fn polyline_children_raw(
+        &self,
+        parent: Handle,
+        expected: usize,
+    ) -> Option<Vec<(Handle, std::sync::Arc<crate::entities::RawRecord>)>> {
+        let kids = self.compound_children.get(&parent.value())?;
+        if kids.len() != expected {
+            return None;
+        }
+        let mut out = Vec::with_capacity(kids.len());
+        for &k in kids {
+            let h = Handle::from(k);
+            if self.raw_excluded_handles.contains(&k) || self.owner_overrides.contains_key(&h) {
+                return None;
+            }
+            let (_, raw) = self.document.raw_records.get(&k)?;
+            if raw.version != self.dxf_version {
+                return None;
+            }
+            out.push((h, raw.clone()));
+        }
+        Some(out)
+    }
+
     /// Write a single entity record.
     pub(super) fn write_entity(&mut self, entity: &EntityType) {
         // Already emitted verbatim (ACADRUST_RAW_ALL bisection aid): skip, so a
@@ -91,18 +117,23 @@ impl<'a> DwgObjectWriter<'a> {
             // Compound entities own follow-up records (VERTEX…/ATTRIB…/SEQEND) that the
             // reader folded into them; the writer emits those alongside, so they must
             // go through the normal path, unless every one of them can be copied too:
-            // an INSERT whose ATTRIBs and SEQEND still carry their bytes goes out with
-            // them verbatim. An INSERT without attributes owns none, and copying it
-            // keeps subclasses such as AcIdBlockReference intact.
+            // an INSERT whose ATTRIBs and SEQEND, or a heavy polyline whose VERTEX
+            // records and SEQEND, still carry their bytes goes out with them verbatim.
+            // An INSERT without attributes owns none, and copying it keeps subclasses
+            // such as AcIdBlockReference intact.
             let children = match entity {
                 EntityType::Insert(i) if !i.attributes.is_empty() || i.seqend_handle.is_some() => {
                     Some(self.insert_children_raw(i))
                 }
+                EntityType::Polyline2D(p) => Some(self.polyline_children_raw(handle, p.vertices.len() + 1)),
+                EntityType::Polyline3D(p) => Some(self.polyline_children_raw(handle, p.vertices.len() + 1)),
+                EntityType::PolygonMesh(p) => Some(self.polyline_children_raw(handle, p.vertices.len() + 1)),
+                EntityType::PolyfaceMesh(p) => {
+                    Some(self.polyline_children_raw(handle, p.vertices.len() + p.faces.len() + 1))
+                }
                 _ => None,
             };
-            let compound = matches!(entity, EntityType::Polyline(_) | EntityType::Polyline2D(_) | EntityType::Polyline3D(_)
-                | EntityType::PolyfaceMesh(_) | EntityType::PolygonMesh(_))
-                || matches!(children, Some(None));
+            let compound = matches!(entity, EntityType::Polyline(_)) || matches!(children, Some(None));
             let ok = self.version.r2004_plus()
                 && raw.version == self.dxf_version
                 && !self.raw_excluded_handles.contains(&handle.value())
