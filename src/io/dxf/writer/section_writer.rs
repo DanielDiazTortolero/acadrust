@@ -9918,12 +9918,15 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         self.writer
             .write_i16(71, image.clip_boundary.clip_type as i16)?;
 
-        // Number of clip boundary vertices
-        self.writer
-            .write_i32(91, image.clip_boundary.vertices.len() as i32)?;
-
-        // Clip boundary vertices
-        for v in &image.clip_boundary.vertices {
+        // Clip boundary count and vertices: a polygon closed, as AutoCAD lists it
+        let boundary = match image.clip_boundary.clip_type {
+            crate::entities::ClipType::Polygonal => {
+                crate::entities::raster_image::dxf_polygon(&image.clip_boundary.vertices)
+            }
+            _ => std::borrow::Cow::Borrowed(image.clip_boundary.vertices.as_slice()),
+        };
+        self.writer.write_i32(91, boundary.len() as i32)?;
+        for v in boundary.iter() {
             self.writer.write_double(14, v.x)?;
             self.writer.write_double(24, v.y)?;
         }
@@ -11379,12 +11382,15 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         // Clip boundary type
         self.writer.write_i16(71, wipeout.clip_type as i16)?;
 
-        // Clip boundary count
-        self.writer
-            .write_i32(91, wipeout.clip_boundary_vertices.len() as i32)?;
-
-        // Clip boundary vertices
-        for v in &wipeout.clip_boundary_vertices {
+        // Clip boundary count and vertices: a polygon closed, as AutoCAD lists it
+        let boundary = match wipeout.clip_type {
+            crate::entities::WipeoutClipType::Polygonal => {
+                crate::entities::raster_image::dxf_polygon(&wipeout.clip_boundary_vertices)
+            }
+            _ => std::borrow::Cow::Borrowed(wipeout.clip_boundary_vertices.as_slice()),
+        };
+        self.writer.write_i32(91, boundary.len() as i32)?;
+        for v in boundary.iter() {
             self.writer.write_double(14, v.x)?;
             self.writer.write_double(24, v.y)?;
         }

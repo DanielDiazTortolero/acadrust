@@ -143,6 +143,30 @@ pub struct ClipBoundary {
     pub vertices: Vec<Vector2>,
 }
 
+/// A polygonal clip boundary (IMAGE, WIPEOUT) as AutoCAD's DXF lists it: closed, its first vertex once more at the
+/// end. AutoCAD's own DXF of a four-corner wipeout has five vertices where its DWG stores four ([`dwg_polygon`]), and
+/// AutoCAD may not take an open one from a DXF (ezdxf closes it before writing: "otherwise AutoCAD crashes").
+pub(crate) fn dxf_polygon(vertices: &[Vector2]) -> std::borrow::Cow<'_, [Vector2]> {
+    match (vertices.first(), vertices.last()) {
+        (Some(first), Some(last)) if vertices.len() >= 3 && first != last => {
+            let mut closed = vertices.to_vec();
+            closed.push(*first);
+            std::borrow::Cow::Owned(closed)
+        }
+        _ => std::borrow::Cow::Borrowed(vertices),
+    }
+}
+
+/// A polygonal clip boundary as AutoCAD's DWG stores it: each vertex once, without the closing vertex its DXF lists
+/// ([`dxf_polygon`]).
+pub(crate) fn dwg_polygon(vertices: &[Vector2]) -> &[Vector2] {
+    if vertices.len() >= 4 && vertices.first() == vertices.last() {
+        &vertices[..vertices.len() - 1]
+    } else {
+        vertices
+    }
+}
+
 impl ClipBoundary {
     /// Creates a rectangular clipping boundary.
     pub fn rectangular(corner1: Vector2, corner2: Vector2) -> Self {

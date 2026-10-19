@@ -4182,9 +4182,10 @@ impl<'a> DwgObjectWriter<'a> {
                 }
             }
             ClipType::Polygonal => {
-                // Polygonal clips: count + vertices
-                self.writer.write_bit_long(clip.vertices.len() as i32);
-                for v in &clip.vertices {
+                // Polygonal clips: count + vertices, each once (a DXF's closing vertex is not stored)
+                let vertices = crate::entities::raster_image::dwg_polygon(&clip.vertices);
+                self.writer.write_bit_long(vertices.len() as i32);
+                for v in vertices {
                     self.writer.write_2raw_double(*v);
                 }
             }
@@ -4230,9 +4231,10 @@ impl<'a> DwgObjectWriter<'a> {
                 }
             }
             crate::entities::WipeoutClipType::Polygonal => {
-                self.writer
-                    .write_bit_long(e.clip_boundary_vertices.len() as i32);
-                for v in &e.clip_boundary_vertices {
+                // each vertex once (a DXF's closing vertex is not stored)
+                let vertices = crate::entities::raster_image::dwg_polygon(&e.clip_boundary_vertices);
+                self.writer.write_bit_long(vertices.len() as i32);
+                for v in vertices {
                     self.writer.write_2raw_double(*v);
                 }
             }
