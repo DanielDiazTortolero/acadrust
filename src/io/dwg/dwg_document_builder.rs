@@ -1899,7 +1899,10 @@ impl DwgDocumentBuilder {
                     // bytes: the writer copies them verbatim while the modeled
                     // object still equals its read-time snapshot, since the
                     // models do not cover every bit strict readers expect.
+                    // A SEQEND keeps them too, so an untouched INSERT can be
+                    // copied with its ATTRIBs and SEQEND (it has no model).
                     if capture_raw
+                        || raw_type_code == OBJ_SEQEND
                         || class_names.dxf.get(&raw_type_code).is_some_and(|name| {
                             matches!(name.as_str(), "ACSH_EXTRUSION_CLASS" | "DIMASSOC")
                                 || crate::objects::is_associative_object_name(name)

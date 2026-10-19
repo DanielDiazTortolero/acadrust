@@ -41,6 +41,38 @@ impl<'a> DwgObjectWriter<'a> {
 
     // â”€â”€ Entity dispatch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    /// The verbatim records of an untouched INSERT's ATTRIBs and SEQEND, in that order, when every one of them can be
+    /// copied: each still carries the bytes it was read from, for this version, and none is excluded from verbatim
+    /// copies or re-owned. None otherwise: the INSERT then goes through the normal path with its children.
+    fn insert_children_raw(
+        &self,
+        insert: &Insert,
+    ) -> Option<Vec<(Handle, std::sync::Arc<crate::entities::RawRecord>)>> {
+        let usable = |h: Handle| {
+            !h.is_null()
+                && !self.raw_excluded_handles.contains(&h.value())
+                && !self.owner_overrides.contains_key(&h)
+        };
+        let mut out = Vec::with_capacity(insert.attributes.len() + 1);
+        for a in &insert.attributes {
+            let raw = a.common.raw_record.as_ref()?;
+            let known_apps = a.common.extended_data.raw_dwg_eed.iter().all(|(app, _)| {
+                self.document.app_ids.iter().any(|x| x.handle.value() == *app)
+            });
+            if raw.version != self.dxf_version || !usable(a.common.handle) || !known_apps {
+                return None;
+            }
+            out.push((a.common.handle, raw.clone()));
+        }
+        let seqend = insert.seqend_handle.filter(|h| usable(*h))?;
+        let (code, raw) = self.document.raw_records.get(&seqend.value())?;
+        if *code != common::OBJ_SEQEND || raw.version != self.dxf_version {
+            return None;
+        }
+        out.push((seqend, raw.clone()));
+        Some(out)
+    }
+
     /// Write a single entity record.
     pub(super) fn write_entity(&mut self, entity: &EntityType) {
         // Already emitted verbatim (ACADRUST_RAW_ALL bisection aid): skip, so a
@@ -58,11 +90,19 @@ impl<'a> DwgObjectWriter<'a> {
             let acis = matches!(entity, EntityType::Solid3D(_) | EntityType::Region(_) | EntityType::Body(_) | EntityType::Surface(_));
             // Compound entities own follow-up records (VERTEX…/ATTRIB…/SEQEND) that the
             // reader folded into them; the writer emits those alongside, so they must
-            // go through the normal path. An INSERT without attributes owns none, and
-            // copying it keeps subclasses such as AcIdBlockReference intact.
+            // go through the normal path, unless every one of them can be copied too:
+            // an INSERT whose ATTRIBs and SEQEND still carry their bytes goes out with
+            // them verbatim. An INSERT without attributes owns none, and copying it
+            // keeps subclasses such as AcIdBlockReference intact.
+            let children = match entity {
+                EntityType::Insert(i) if !i.attributes.is_empty() || i.seqend_handle.is_some() => {
+                    Some(self.insert_children_raw(i))
+                }
+                _ => None,
+            };
             let compound = matches!(entity, EntityType::Polyline(_) | EntityType::Polyline2D(_) | EntityType::Polyline3D(_)
                 | EntityType::PolyfaceMesh(_) | EntityType::PolygonMesh(_))
-                || matches!(entity, EntityType::Insert(i) if !i.attributes.is_empty() || i.seqend_handle.is_some());
+                || matches!(children, Some(None));
             let ok = self.version.r2004_plus()
                 && raw.version == self.dxf_version
                 && !self.raw_excluded_handles.contains(&handle.value())
@@ -77,6 +117,9 @@ impl<'a> DwgObjectWriter<'a> {
                 });
             if ok {
                 self.register_raw_object(handle, &raw.data, raw.handle_bits);
+                for (child, raw) in children.flatten().unwrap_or_default() {
+                    self.register_raw_object(child, &raw.data, raw.handle_bits);
+                }
                 return;
             }
         }
