@@ -10428,7 +10428,11 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             self.writer.write_string(300, &value.name)?;
             self.writer.write_string(301, "DATAMAP_VALUE")?;
             self.write_field_cell_value_dxf(&value.value)?;
-            self.writer.write_string(304, "ACVALUE_END")?;
+            // only from R2007 on, as AutoCAD writes it: its DXF reader discards an R2004 drawing on one ("Premature
+            // end of object" in TABLECONTENT: DWG TrueView 2027)
+            if self.dxf_version >= DxfVersion::AC1021 {
+                self.writer.write_string(304, "ACVALUE_END")?;
+            }
         }
         self.writer.write_string(309, "DATAMAP_END")?;
         Ok(())
@@ -10588,7 +10592,9 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             TableCellContentType::Value => {
                 self.writer.write_string(300, "VALUE")?;
                 self.write_field_cell_value_dxf(&content.value)?;
-                self.writer.write_string(304, "ACVALUE_END")?;
+                if self.dxf_version >= DxfVersion::AC1021 {     // as above: R2007 on
+                    self.writer.write_string(304, "ACVALUE_END")?;
+                }
             }
             TableCellContentType::Field => {
                 self.writer
