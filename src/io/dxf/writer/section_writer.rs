@@ -4180,18 +4180,18 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         if let Some(h) = mtext.rectangle_height {
             self.writer.write_double(46, h)?;
         }
-        // Background fill — only when enabled by the flags.
-        if mtext.background_fill_flags != 0 {
+        // Background fill (from R2004; AutoCAD's R2000 DXF has none), in AutoCAD's order and codes: the colour as an
+        // index (63, always), its true colour (421) when it has one, the box scale (45), the transparency (441,
+        // always). Without 63 and 441 AutoCAD's DXF reader stops at the MTEXT and discards the whole drawing ("Could
+        // not parse embeddedObject marker", "Xdata wasn't read": DWG TrueView 2027, 2026-10-19).
+        if mtext.background_fill_flags != 0 && self.dxf_version >= DxfVersion::AC1018 {
             self.writer.write_i32(90, mtext.background_fill_flags)?;
-            self.writer.write_double(45, mtext.background_scale)?;
+            self.writer.write_i16(63, mtext.background_color.approximate_index())?;
             if let Some(tc) = mtext.background_color.to_true_color_value() {
                 self.writer.write_i32(421, tc)?;
-            } else if let Some(idx) = mtext.background_color.index() {
-                self.writer.write_i16(63, idx as i16)?;
             }
-            if mtext.background_transparency != 0 {
-                self.writer.write_i32(441, mtext.background_transparency)?;
-            }
+            self.writer.write_double(45, mtext.background_scale)?;
+            self.writer.write_i32(441, mtext.background_transparency)?;
         }
         // R2018+ keeps the column layout in the MTEXT's embedded object, as
         // the reference application writes it (it misreads the standard
