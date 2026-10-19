@@ -58,6 +58,16 @@ impl Transparency {
         }
     }
 
+    /// The value for a layer's `AcCmTransparency` xdata: the drawing's `stored` value while it still decodes to this
+    /// transparency (AutoCAD writes 0 for an opaque layer, and 0 decodes as opaque), else the canonical packed value,
+    /// so a save keeps what the drawing stored unless the transparency was changed.
+    pub fn to_layer_alpha_value(&self, stored: Option<i32>) -> i32 {
+        match stored {
+            Some(value) if Self::from_layer_alpha_value(value as u32) == Some(*self) => value,
+            _ => self.to_dxf_value(),
+        }
+    }
+
     /// Return the explicit amount, or zero for inherited values.
     pub const fn alpha(&self) -> u8 {
         match self {

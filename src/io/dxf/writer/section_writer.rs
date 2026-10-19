@@ -1273,10 +1273,18 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         self.writer.write_bool(290, layer.is_plottable)?;
 
         let mut generated = Vec::new();
-        // AutoCAD stores layer transparency as AcCmTransparency XDATA.
-        if !layer.transparency.is_opaque() || document.object_xdata.get(&layer.handle).is_some_and(|data| data.get_record("AcCmTransparency").is_some()) {
+        // AutoCAD stores layer transparency as AcCmTransparency XDATA. The stored value is kept while it still means
+        // the layer's transparency (AutoCAD's 0 for an opaque layer would otherwise come back as 33554687).
+        let stored = document.object_xdata.get(&layer.handle).and_then(|data| data.get_record("AcCmTransparency"));
+        if !layer.transparency.is_opaque() || stored.is_some() {
+            let stored_value = stored.and_then(|record| {
+                record.values.iter().find_map(|value| match value {
+                    XDataValue::Integer32(value) => Some(*value),
+                    _ => None,
+                })
+            });
             let mut record = crate::xdata::ExtendedDataRecord::new("AcCmTransparency");
-            record.values.push(XDataValue::Integer32(layer.transparency.to_dxf_value()));
+            record.values.push(XDataValue::Integer32(layer.transparency.to_layer_alpha_value(stored_value)));
             generated.push(record);
         }
 

@@ -787,17 +787,22 @@ impl<'a> DwgObjectWriter<'a> {
 
     fn write_layer(&mut self, layer: &crate::tables::Layer) {
         let transparency_app = self.document.app_ids.get("AcCmTransparency");
-        let had_transparency_eed = self
+        // the value the drawing stored is kept while it still means the layer's transparency (AutoCAD's 0 for an
+        // opaque layer would otherwise come back as 33554687)
+        let stored_transparency = self
             .existing_xdata_values(layer.handle, "AcCmTransparency")
-            .is_some_and(|values| {
-                values.iter().any(|value| {
-                    matches!(value, crate::xdata::XDataValue::Integer32(_))
+            .and_then(|values| {
+                values.iter().find_map(|value| match value {
+                    crate::xdata::XDataValue::Integer32(value) => Some(*value),
+                    _ => None,
                 })
             });
         let transparency_eed = transparency_app.and_then(|app| {
-            (!layer.transparency.is_opaque() || had_transparency_eed).then(|| {
+            (!layer.transparency.is_opaque() || stored_transparency.is_some()).then(|| {
                 let mut bytes = vec![71];
-                bytes.extend_from_slice(&layer.transparency.to_dxf_value().to_le_bytes());
+                bytes.extend_from_slice(
+                    &layer.transparency.to_layer_alpha_value(stored_transparency).to_le_bytes(),
+                );
                 (app.handle.value(), bytes)
             })
         });
