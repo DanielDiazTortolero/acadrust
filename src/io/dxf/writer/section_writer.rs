@@ -5043,7 +5043,9 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             self.writer.write_handle(5, vertex_handle)?;
             self.writer.write_handle(330, polyline_handle)?;
             self.writer.write_subclass("AcDbEntity")?;
-            self.writer.write_string(8, &vertex.layer)?;
+            // a vertex without a layer of its own is on its polyline's ('' is no layer)
+            let layer = if vertex.layer.is_empty() { &polyline.common.layer } else { &vertex.layer };
+            self.writer.write_string(8, layer)?;
             // Propagate parent color to vertex so CAD doesn't flag mismatch
             if polyline.common.color != Color::ByLayer {
                 self.writer.write_color(62, polyline.common.color)?;
@@ -11260,7 +11262,9 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             self.writer.write_handle(5, vertex_handle)?;
             self.writer.write_handle(330, mesh.common.handle)?;
             self.writer.write_subclass("AcDbEntity")?;
-            self.writer.write_string(8, &vertex.common.layer)?;
+            // a vertex without a layer of its own is on its mesh's ('' is no layer)
+            let layer = if vertex.common.layer.is_empty() { &mesh.common.layer } else { &vertex.common.layer };
+            self.writer.write_string(8, layer)?;
             self.writer.write_subclass("AcDbVertex")?;
             self.writer.write_subclass("AcDbPolyFaceMeshVertex")?;
 
@@ -11578,7 +11582,9 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             self.writer.write_handle(5, vertex_handle)?;
             self.writer.write_handle(330, mesh_handle)?;
             self.writer.write_subclass("AcDbEntity")?;
-            self.writer.write_string(8, &vertex.common.layer)?;
+            // a vertex without a layer of its own is on its mesh's ('' is no layer)
+            let layer = if vertex.common.layer.is_empty() { &mesh.common.layer } else { &vertex.common.layer };
+            self.writer.write_string(8, layer)?;
             // Propagate parent color to vertex so CAD doesn't flag mismatch
             if mesh.common.color != Color::ByLayer {
                 self.writer.write_color(62, mesh.common.color)?;

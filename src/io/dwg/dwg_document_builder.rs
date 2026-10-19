@@ -2235,13 +2235,15 @@ impl DwgDocumentBuilder {
                             .collect();
                     }
                     EntityType::Polyline3D(ref mut e) => {
+                        let parent_layer = e.common.layer.clone();
                         e.vertices = verts
                             .into_iter()
                             .filter_map(|v| {
-                                if let PendingVertex::V3D(d, _ec) = v {
+                                if let PendingVertex::V3D(d, ec) = v {
                                     Some(crate::entities::polyline3d::Vertex3DPolyline {
                                         handle: d.handle,
-                                        layer: String::new(),
+                                        // the VERTEX record's own layer ('' is no layer)
+                                        layer: if ec.layer.is_empty() { parent_layer.clone() } else { ec.layer },
                                         position: d.position,
                                         flags: d.flags as i32,
                                     })
@@ -2282,12 +2284,15 @@ impl DwgDocumentBuilder {
                         }
                     }
                     EntityType::PolygonMesh(ref mut e) => {
+                        let parent_layer = e.common.layer.clone();
                         e.vertices = verts
                             .into_iter()
                             .filter_map(|v| {
-                                if let PendingVertex::V3D(d, _ec) = v {
+                                if let PendingVertex::V3D(d, ec) = v {
                                     let mut c = crate::entities::EntityCommon::new();
                                     c.handle = d.handle;
+                                    // the VERTEX record's own layer ('' is no layer)
+                                    c.layer = if ec.layer.is_empty() { parent_layer.clone() } else { ec.layer };
                                     Some(crate::entities::polygon_mesh::PolygonMeshVertex {
                                         common: c,
                                         location: d.position,
