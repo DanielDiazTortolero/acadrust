@@ -1390,6 +1390,7 @@ impl<'a> DwgObjectWriter<'a> {
                 &self.document.legacy_attribute_values,
                 att.common.handle,
                 &att.value,
+                self.dxf_version,
             )
             .to_string()
         } else {
@@ -4928,6 +4929,7 @@ impl<'a> DwgObjectWriter<'a> {
                 &self.document.legacy_attribute_values,
                 e.common.handle,
                 &e.default_value,
+                self.dxf_version,
             )
             .to_string()
         } else {
@@ -5022,6 +5024,7 @@ impl<'a> DwgObjectWriter<'a> {
                 &self.document.legacy_attribute_values,
                 e.common.handle,
                 &e.value,
+                self.dxf_version,
             )
             .to_string()
         } else {

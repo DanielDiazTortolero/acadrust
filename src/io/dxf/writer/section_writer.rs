@@ -5387,6 +5387,7 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
                 &self.legacy_attribute_values,
                 handle,
                 mtext.value.as_str(),
+                self.dxf_version,
             ),
             _ => value,
         };

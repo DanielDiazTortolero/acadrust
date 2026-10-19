@@ -54,17 +54,22 @@ pub(crate) fn legacy_attribute_tag<'a>(
     tag
 }
 
-/// The one-line value a writer puts out for a multiline attribute or definition whose full text is `value`: the
-/// stored one (`stored`: handle -> (stored one-line value, value read), [`CadDocument::legacy_attribute_values`])
-/// while the value is unchanged; an empty one stays empty after an edit (AutoCAD's form); else the text itself.
+/// The one-line value a writer puts out, in a drawing of `version`, for a multiline attribute or definition whose
+/// full text is `value`: the stored one (`stored`: handle -> (stored one-line value, value read),
+/// [`CadDocument::legacy_attribute_values`]) while the value is unchanged; an empty one stays empty after an edit
+/// (AutoCAD's 2018 form, the text is in the embedded MTEXT); else the text itself. Before 2018 there is no embedded
+/// MTEXT, so an empty one gives way to the text, as AutoCAD's own down-save writes it (its 2007-2013 samples):
+/// writing it empty lost the attribute's text in every older release.
 pub(crate) fn legacy_attribute_one_line<'a>(
     stored: &'a HashMap<Handle, (String, String)>,
     handle: Handle,
     value: &'a str,
+    version: DxfVersion,
 ) -> &'a str {
+    let r2018 = version >= DxfVersion::AC1032;
     match stored.get(&handle) {
-        Some((one_line, read)) if read == value => one_line,
-        Some((one_line, _)) if one_line.is_empty() => "",
+        Some((one_line, read)) if read == value && (r2018 || !one_line.is_empty()) => one_line,
+        Some((one_line, _)) if one_line.is_empty() && r2018 => "",
         _ => value,
     }
 }
