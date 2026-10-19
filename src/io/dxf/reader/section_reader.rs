@@ -12597,6 +12597,7 @@ impl<'a> SectionReader<'a> {
         let mut geom_vertices: Vec<RawVertex> = Vec::new();
         let mut pface_vertices: Vec<PolyfaceVertex> = Vec::new();
         let mut pface_faces: Vec<PolyfaceFace> = Vec::new();
+        let mut seqend_handle: Option<Handle> = None;
 
         while let Some(pair) = self.reader.read_pair()? {
             if pair.code == 0 {
@@ -12709,10 +12710,21 @@ impl<'a> SectionReader<'a> {
                     // Polygon-mesh vertices also use bit 64. The parent POLYLINE
                     // must identify a polyface before its vertices become geometry
                     // (bit 64) or face records (bit 128 without bit 64).
+                    // A polyface's vertex and face records keep their own handle and layer (and a vertex its colour):
+                    // a DXF->DWG save used to give them new handles on layer 0.
+                    let mut sub_common = EntityCommon {
+                        handle: Handle::new(vhandle),
+                        layer: vlayer.clone(),
+                        owner_handle: common.handle,
+                        ..EntityCommon::default()
+                    };
                     if (flags & 64) != 0 && (vflags & 64) != 0 {
                         // Polyface geometry vertex
+                        if let Some(c) = vcolor {
+                            sub_common.color = c;
+                        }
                         pface_vertices.push(PolyfaceVertex {
-                            common: EntityCommon::default(),
+                            common: sub_common,
                             location: loc,
                             flags: PolyfaceVertexFlags::from_bits_truncate(vflags),
                             bulge: 0.0,
@@ -12724,7 +12736,7 @@ impl<'a> SectionReader<'a> {
                     } else if (flags & 64) != 0 && (vflags & 128) != 0 {
                         // Face record (only bit 128 set, no bit 64)
                         pface_faces.push(PolyfaceFace {
-                            common: EntityCommon::default(),
+                            common: sub_common,
                             flags: PolyfaceVertexFlags::from_bits_truncate(vflags),
                             index1: vi1,
                             index2: vi2,
@@ -12753,6 +12765,9 @@ impl<'a> SectionReader<'a> {
                         if seqend_pair.code == 0 {
                             self.reader.push_back(seqend_pair);
                             break;
+                        }
+                        if seqend_pair.code == 5 {
+                            seqend_handle = seqend_pair.as_handle().map(Handle::new).filter(|h| !h.is_null());
                         }
                     }
                     break;
@@ -12848,6 +12863,7 @@ impl<'a> SectionReader<'a> {
             mesh.elevation = elevation;
             mesh.vertices = pface_vertices;
             mesh.faces = pface_faces;
+            mesh.seqend_handle = seqend_handle;
             Ok(Some(EntityType::PolyfaceMesh(mesh)))
         } else if (flags & 16) != 0 {
             let mut mesh = PolygonMesh::new();
