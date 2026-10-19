@@ -5198,7 +5198,14 @@ impl<'a> SectionReader<'a> {
                 }
             }
             "ACDB_TEXTOBJECTCONTEXTDATA_CLASS" => {
-                let section = "AcDbTextObjectContextData";
+                // AutoCAD: no subclass marker, the fields follow the annotation
+                // scale groups. Older acadrust output: an
+                // AcDbTextObjectContextData marker.
+                let section = if fields.has("AcDbTextObjectContextData", 70) {
+                    "AcDbTextObjectContextData"
+                } else {
+                    "AcDbAnnotScaleObjectContextData"
+                };
                 ObjectContextKind::Text {
                     horizontal_mode: fields.i16(section, 70),
                     rotation: fields.f64(section, 50),

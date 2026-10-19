@@ -8064,7 +8064,10 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
                 insertion,
                 alignment,
             } => {
-                self.writer.write_subclass("AcDbTextObjectContextData")?;
+                // As for MTEXT: AutoCAD writes these straight after the
+                // AcDbAnnotScaleObjectContextData groups, and its DXF reader
+                // discards the whole drawing on an AcDbTextObjectContextData
+                // marker ("Missing DXF group code: 1": DWG TrueView 2027).
                 self.writer.write_i16(70, *horizontal_mode)?;
                 self.writer.write_double(50, *rotation)?;
                 self.writer.write_double(10, insertion.x)?;
