@@ -145,6 +145,9 @@ pub struct Vertex2D {
     pub curve_tangent: f64,
     /// Vertex ID (R2010+)
     pub id: i32,
+    /// The VERTEX record's handle as read (NULL for a new vertex: the writers allocate one)
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub handle: Handle,
 }
 
 impl Vertex2D {
@@ -157,6 +160,7 @@ impl Vertex2D {
             bulge: 0.0,
             curve_tangent: 0.0,
             id: 0,
+            handle: Handle::NULL,
         }
     }
 
@@ -223,6 +227,9 @@ pub struct Polyline2D {
     pub normal: Vector3,
     /// Vertices
     pub vertices: Vec<Vertex2D>,
+    /// The SEQEND record's handle as read (None for a new polyline: the writers allocate one)
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub seqend_handle: Option<Handle>,
 }
 
 impl Polyline2D {
@@ -237,6 +244,7 @@ impl Polyline2D {
             elevation: 0.0,
             normal: Vector3::new(0.0, 0.0, 1.0),
             vertices: Vec::new(),
+            seqend_handle: None,
         }
     }
 

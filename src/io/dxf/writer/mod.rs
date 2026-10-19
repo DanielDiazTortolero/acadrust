@@ -25,6 +25,8 @@ pub struct DxfWriter<'a> {
     pub binary: bool,
     /// Explicit target version; `None` writes the document's own version.
     version: Option<crate::types::DxfVersion>,
+    /// Write plain heavy 2D polylines as read instead of down-saving them to LWPOLYLINE.
+    keep_heavy_polylines: bool,
 }
 
 impl<'a> DxfWriter<'a> {
@@ -34,6 +36,7 @@ impl<'a> DxfWriter<'a> {
             document,
             binary: false,
             version: None,
+            keep_heavy_polylines: false,
         }
     }
 
@@ -43,7 +46,16 @@ impl<'a> DxfWriter<'a> {
             document,
             binary: true,
             version: None,
+            keep_heavy_polylines: false,
         }
+    }
+
+    /// Write every heavy POLYLINE as POLYLINE/VERTEX/SEQEND, with the handles they were read with, instead of
+    /// down-saving a plain 2D one to LWPOLYLINE (the default for R2000+ output). A converter that must keep what
+    /// a drawing holds (a DWG read and written back through DXF) wants this; the entity keeps its type.
+    pub fn keep_heavy_polylines(mut self, keep: bool) -> Self {
+        self.keep_heavy_polylines = keep;
+        self
     }
 
     /// Write the document as `version` instead of its own version.
@@ -154,12 +166,14 @@ impl<'a> DxfWriter<'a> {
         let extra_handles = count_extra_handles(
             document,
             SectionWriter::<W>::writable_version(output_version),
+            self.keep_heavy_polylines,
         );
         let handle_seed = handle_start + extra_handles + 1;
         let mut section_writer = SectionWriter::new(writer, handle_start, handle_seed);
         section_writer.set_version(output_version);
         section_writer.build_valid_handles(document);
         section_writer.set_legacy_attribute_data(document);
+        section_writer.set_keep_heavy_polylines(self.keep_heavy_polylines);
 
         // Write all sections
         section_writer.write_header(document)?;
@@ -208,7 +222,7 @@ impl<'a> DxfWriter<'a> {
     }
 }
 
-fn count_extra_handles(document: &CadDocument, version: crate::types::DxfVersion) -> u64 {
+fn count_extra_handles(document: &CadDocument, version: crate::types::DxfVersion, keep_heavy: bool) -> u64 {
     use crate::objects::ObjectType;
 
     let mut count = 0u64;
@@ -222,13 +236,17 @@ fn count_extra_handles(document: &CadDocument, version: crate::types::DxfVersion
             EntityType::Polyline2D(polyline) => {
                 // Plain 2D polylines down-save as LWPOLYLINE for R2000+,
                 // which emits no child records (see SectionWriter).
-                if version >= crate::types::DxfVersion::AC1015
+                if !keep_heavy
+                    && version >= crate::types::DxfVersion::AC1015
                     && section_writer::polyline2d_downsaves_to_lwpolyline(polyline)
                 {
                     continue;
                 }
-                // Vertices + SEQEND all use allocate_handle()
-                count += polyline.vertices.len() as u64 + 1;
+                // Vertices and the SEQEND without a stored handle use allocate_handle()
+                count += polyline.vertices.iter().filter(|v| v.handle.is_null()).count() as u64;
+                if polyline.seqend_handle.filter(|h| !h.is_null()).is_none() {
+                    count += 1;
+                }
             }
             EntityType::Polyline3D(polyline) => {
                 for vertex in &polyline.vertices {
@@ -236,8 +254,10 @@ fn count_extra_handles(document: &CadDocument, version: crate::types::DxfVersion
                         count += 1;
                     }
                 }
-                // SEQEND always written
-                count += 1;
+                // SEQEND, unless its handle was read
+                if polyline.seqend_handle.filter(|h| !h.is_null()).is_none() {
+                    count += 1;
+                }
             }
             EntityType::PolyfaceMesh(mesh) => {
                 for vertex in &mesh.vertices {
@@ -260,8 +280,10 @@ fn count_extra_handles(document: &CadDocument, version: crate::types::DxfVersion
                         count += 1;
                     }
                 }
-                // SEQEND always needs a handle
-                count += 1;
+                // SEQEND, unless its handle was read
+                if mesh.seqend_handle.filter(|h| !h.is_null()).is_none() {
+                    count += 1;
+                }
             }
             EntityType::Insert(insert) => {
                 if insert.has_attributes() {

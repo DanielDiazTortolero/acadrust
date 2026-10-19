@@ -644,12 +644,27 @@ fn normalize_entity_for_comparison(entity: &mut EntityType) {
 
     // ── Entity-specific handles & computed fields ──────────────
     match entity {
-        // Polyline3D: vertex handles and layers
+        // Polyline3D: vertex handles and layers, seqend handle
         EntityType::Polyline3D(p) => {
+            p.seqend_handle = None;
             for v in &mut p.vertices {
                 v.handle = Handle::NULL;
                 // Layer may be inherited from the polyline after write/read
                 v.layer = String::new();
+            }
+        }
+        // Polyline2D: vertex handles, seqend handle
+        EntityType::Polyline2D(p) => {
+            p.seqend_handle = None;
+            for v in &mut p.vertices {
+                v.handle = Handle::NULL;
+            }
+        }
+        // PolygonMesh: seqend handle (vertex handles are in their EntityCommon)
+        EntityType::PolygonMesh(m) => {
+            m.seqend_handle = None;
+            for v in &mut m.vertices {
+                normalize_entity_common(&mut v.common);
             }
         }
         // PolyfaceMesh: seqend handle + nested vertex/face EntityCommon

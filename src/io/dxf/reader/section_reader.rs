@@ -12889,6 +12889,7 @@ impl<'a> SectionReader<'a> {
                     flags: rv.vflags,
                 })
                 .collect();
+            mesh.seqend_handle = seqend_handle;
             Ok(Some(EntityType::PolygonMesh(mesh)))
         } else if (flags & 8) != 0 {
             let mut pl = Polyline3D::new();
@@ -12909,6 +12910,7 @@ impl<'a> SectionReader<'a> {
                     v
                 })
                 .collect();
+            pl.seqend_handle = seqend_handle;
             Ok(Some(EntityType::Polyline3D(pl)))
         } else {
             let mut pl = Polyline2D::new();
@@ -12926,6 +12928,7 @@ impl<'a> SectionReader<'a> {
                 .iter()
                 .map(|rv| {
                     let mut v = Vertex2D::new(rv.loc);
+                    v.handle = Handle::new(rv.handle);
                     v.flags = VertexFlags::from_bits(rv.vflags as u8);
                     v.start_width = if rv.has_start_width {
                         rv.start_width
@@ -12955,6 +12958,7 @@ impl<'a> SectionReader<'a> {
                 pl.start_width = def_start_width;
                 pl.end_width = def_end_width;
             }
+            pl.seqend_handle = seqend_handle;
             Ok(Some(EntityType::Polyline2D(pl)))
         }
     }

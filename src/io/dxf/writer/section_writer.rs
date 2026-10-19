@@ -106,6 +106,9 @@ pub struct SectionWriter<'a, W: DxfStreamWriter> {
     legacy_attribute_tags: HashMap<Handle, (String, String)>,
     /// The document's stored multiline attribute one-line values (`CadDocument::legacy_attribute_values`).
     legacy_attribute_values: HashMap<Handle, (String, String)>,
+    /// Write plain heavy 2D polylines as POLYLINE/VERTEX/SEQEND, as read, instead of down-saving them to LWPOLYLINE
+    /// (`DxfWriter::keep_heavy_polylines`).
+    keep_heavy_polylines: bool,
 }
 
 impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
@@ -131,7 +134,13 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
             loft_reference_appid: None,
             legacy_attribute_tags: HashMap::new(),
             legacy_attribute_values: HashMap::new(),
+            keep_heavy_polylines: false,
         }
+    }
+
+    /// See `DxfWriter::keep_heavy_polylines`.
+    pub fn set_keep_heavy_polylines(&mut self, keep: bool) {
+        self.keep_heavy_polylines = keep;
     }
 
     /// Take the document's stored multiline attribute tags and one-line values, so the attributes keep them (see
@@ -3920,7 +3929,11 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         // Writing every heavy polyline back as POLYLINE/VERTEX/SEQEND is a
         // large structural divergence from the source drawing, and some CAD
         // applications flag the resurrected VERTEX owner wiring on save.
-        if self.dxf_version >= DxfVersion::AC1015 && polyline2d_downsaves_to_lwpolyline(polyline) {
+        // `DxfWriter::keep_heavy_polylines` writes them as they were read.
+        if !self.keep_heavy_polylines
+            && self.dxf_version >= DxfVersion::AC1015
+            && polyline2d_downsaves_to_lwpolyline(polyline)
+        {
             return self.write_polyline2d_as_lwpolyline(polyline, owner);
         }
         self.writer.write_entity_type("POLYLINE")?;
@@ -3956,7 +3969,12 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
 
         // Write vertices with proper subclass markers
         for vertex in polyline.vertices.iter() {
-            let vertex_handle = self.allocate_handle();
+            // the VERTEX record's handle as read; a new one for a new vertex
+            let vertex_handle = if vertex.handle.is_null() {
+                self.allocate_handle()
+            } else {
+                vertex.handle
+            };
             self.writer.write_entity_type("VERTEX")?;
             self.writer.write_handle(5, vertex_handle)?;
             self.writer.write_handle(330, polyline_handle)?;
@@ -3983,7 +4001,10 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         }
 
         // Write SEQEND
-        let seqend_handle = self.allocate_handle();
+        let seqend_handle = polyline
+            .seqend_handle
+            .filter(|h| !h.is_null())
+            .unwrap_or_else(|| self.allocate_handle());
         self.writer.write_entity_type("SEQEND")?;
         self.writer.write_handle(5, seqend_handle)?;
         self.writer.write_handle(330, polyline_handle)?;
@@ -5035,7 +5056,10 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
 
         // SEQEND
         self.writer.write_entity_type("SEQEND")?;
-        let seqend_handle = self.allocate_handle();
+        let seqend_handle = polyline
+            .seqend_handle
+            .filter(|h| !h.is_null())
+            .unwrap_or_else(|| self.allocate_handle());
         self.writer.write_handle(5, seqend_handle)?;
         self.writer.write_handle(330, polyline_handle)?;
         self.writer.write_subclass("AcDbEntity")?;
@@ -11562,7 +11586,10 @@ impl<'a, W: DxfStreamWriter> SectionWriter<'a, W> {
         }
 
         // Write SEQEND
-        let seqend_handle = self.allocate_handle();
+        let seqend_handle = mesh
+            .seqend_handle
+            .filter(|h| !h.is_null())
+            .unwrap_or_else(|| self.allocate_handle());
         self.writer.write_entity_type("SEQEND")?;
         self.writer.write_handle(5, seqend_handle)?;
         self.writer.write_handle(330, mesh_handle)?;

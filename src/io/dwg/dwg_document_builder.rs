@@ -2182,6 +2182,7 @@ impl DwgDocumentBuilder {
                                         bulge: d.bulge,
                                         curve_tangent: d.tangent_dir,
                                         id: d.vertex_id,
+                                        handle: d.handle,
                                     })
                                 } else {
                                     None
@@ -2235,10 +2236,6 @@ impl DwgDocumentBuilder {
                                 _ => {}
                             }
                         }
-                        // Restore the seqend handle for this polyface mesh
-                        if let Some(sh) = pending.seqends.get(&poly_handle).copied() {
-                            e.seqend_handle = Some(sh);
-                        }
                     }
                     EntityType::PolygonMesh(ref mut e) => {
                         e.vertices = verts
@@ -2258,6 +2255,16 @@ impl DwgDocumentBuilder {
                             })
                             .collect();
                     }
+                    _ => {}
+                }
+            }
+            // Every heavy polyline keeps its SEQEND's handle, so the writers write it back
+            if let Some(sh) = pending.seqends.get(&poly_handle).copied() {
+                match &mut entity {
+                    EntityType::Polyline2D(e) => e.seqend_handle = Some(sh),
+                    EntityType::Polyline3D(e) => e.seqend_handle = Some(sh),
+                    EntityType::PolygonMesh(e) => e.seqend_handle = Some(sh),
+                    EntityType::PolyfaceMesh(e) => e.seqend_handle = Some(sh),
                     _ => {}
                 }
             }

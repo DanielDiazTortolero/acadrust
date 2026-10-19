@@ -205,6 +205,9 @@ pub struct Polyline3D {
     pub normal: Vector3,
     /// Vertex list
     pub vertices: Vec<Vertex3DPolyline>,
+    /// The SEQEND record's handle as read (None for a new polyline: the writers allocate one)
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub seqend_handle: Option<Handle>,
 }
 
 impl Polyline3D {
@@ -223,6 +226,7 @@ impl Polyline3D {
             elevation: 0.0,
             normal: Vector3::UNIT_Z,
             vertices: Vec::new(),
+            seqend_handle: None,
         }
     }
 

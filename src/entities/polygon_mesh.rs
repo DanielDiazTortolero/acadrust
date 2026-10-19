@@ -114,6 +114,9 @@ pub struct PolygonMesh {
     pub normal: Vector3,
     /// Mesh vertices (M × N grid)
     pub vertices: Vec<PolygonMeshVertex>,
+    /// The SEQEND record's handle as read (None for a new mesh: the writers allocate one)
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub seqend_handle: Option<Handle>,
 }
 
 impl PolygonMesh {
@@ -130,6 +133,7 @@ impl PolygonMesh {
             elevation: 0.0,
             normal: Vector3::UNIT_Z,
             vertices: Vec::new(),
+            seqend_handle: None,
         }
     }
 

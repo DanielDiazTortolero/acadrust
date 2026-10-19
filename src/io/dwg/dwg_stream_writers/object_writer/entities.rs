@@ -2605,10 +2605,16 @@ impl<'a> DwgObjectWriter<'a> {
         self.writer.write_bit_double(e.elevation);
         self.writer.write_bit_extrusion(e.normal);
 
-        // Allocate handles for vertices and seqend
-        let vertex_handles: Vec<Handle> =
-            (0..e.vertices.len()).map(|_| self.alloc_handle()).collect();
-        let seqend_handle = self.alloc_handle();
+        // The vertices' and SEQEND's handles as read; new ones only for new records
+        let vertex_handles: Vec<Handle> = e
+            .vertices
+            .iter()
+            .map(|v| if v.handle.is_null() { self.alloc_handle() } else { v.handle })
+            .collect();
+        let seqend_handle = e
+            .seqend_handle
+            .filter(|h| !h.is_null())
+            .unwrap_or_else(|| self.alloc_handle());
 
         if self.version.r2004_plus() {
             self.writer.write_bit_long(e.vertices.len() as i32);
@@ -2777,7 +2783,10 @@ impl<'a> DwgObjectWriter<'a> {
                 }
             })
             .collect();
-        let seqend_handle = self.alloc_handle();
+        let seqend_handle = e
+            .seqend_handle
+            .filter(|h| !h.is_null())
+            .unwrap_or_else(|| self.alloc_handle());
 
         if self.version.r2004_plus() {
             self.writer.write_bit_long(e.vertices.len() as i32);
@@ -3089,7 +3098,10 @@ impl<'a> DwgObjectWriter<'a> {
                 }
             })
             .collect();
-        let seqend_handle = self.alloc_handle();
+        let seqend_handle = e
+            .seqend_handle
+            .filter(|h| !h.is_null())
+            .unwrap_or_else(|| self.alloc_handle());
 
         if self.version.r2004_plus() {
             self.writer.write_bit_long(e.vertices.len() as i32);
